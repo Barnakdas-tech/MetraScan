@@ -1,0 +1,388 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  ADMIN
+  INSPECTOR
+  REVIEWER
+  VIEWER
+}
+
+enum InspectionStatus {
+  DRAFT
+  PROCESSING
+  COMPLETED
+  UNDER_REVIEW
+  CLOSED
+}
+
+enum PackageType {
+  RETAIL
+  WHOLESALE
+  IMPORTED
+  UNKNOWN
+}
+
+enum ConsumerType {
+  RETAIL
+  INDUSTRIAL
+  INSTITUTIONAL
+  UNKNOWN
+}
+
+enum UploadStatus {
+  PENDING
+  UPLOADING
+  UPLOADED
+  FAILED
+}
+
+enum ValidationStatus {
+  PASS
+  FAIL
+  REVIEW
+  NOT_APPLICABLE
+  MANUAL_REQUIRED
+}
+
+enum EvidenceKind {
+  OCR
+  VISION
+  QR
+  MANUAL
+}
+
+enum ReportFormat {
+  PDF
+}
+
+// ---------------------------------------------------------------------------
+// Core entities
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         Role     @default(INSPECTOR)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  reviews            Review[]
+  reports            Report[]
+  audits             AuditLog[]
+  inspectionsCreated Inspection[] @relation("InspectionCreator")
+  declarationsEdited Declaration[] @relation("DeclarationEditor")
+}
+
+model Inspection {
+  id              String            @id @default(uuid())
+  inspectionNumber String            @unique
+  status          InspectionStatus  @default(DRAFT)
+  inspectorId     String?
+  productId       String?
+  packageType     PackageType       @default(UNKNOWN)
+  intendedConsumer ConsumerType     @default(UNKNOWN)
+  inspectionDate  DateTime          @default(now())
+  location        String?
+  notes           String?
+  year            Int
+  overallResult   ValidationStatus?
+  isDemo          Boolean     @default(false)
+  demoLabel       String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  inspector   User?              @relation("InspectionCreator", fields: [inspectorId], references: [id], onDelete: SetNull)
+  product     Product?           @relation(fields: [productId], references: [id], onDelete: SetNull)
+  images      InspectionImage[]
+  declarations Declaration[]
+  results     ValidationResult[]
+  violations  Violation[]
+  reviews     Review[]
+  reports     Report[]
+  evidence     Evidence[]
+
+  @@index([status, createdAt])
+  @@index([year, inspectionNumber])
+}
+
+model InspectionCounter {
+  year       Int @id
+  lastNumber Int
+
+  @@map("InspectionCounter")
+}
+
+model InspectionImage {
+  id              String       @id @default(uuid())
+  inspectionId    String
+  storageKey      String       @unique
+  thumbnailKey    String?
+  originalFilename String
+  mimeType        String
+  fileSize        Int
+  width           Int?
+  height          Int?
+  sequence        Int          @default(0)
+  uploadStatus    UploadStatus @default(UPLOADED)
+  qualityScore   Float?
+  ocrStatus       String?
+  analysisStatus  String?
+  isDemo          Boolean      @default(false)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  inspection   Inspection     @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  declarations Declaration[]
+  ocrResults    OcrResult[]
+
+  @@index([inspectionId])
+}
+
+// One OCR run over one image (raw output preserved verbatim).
+model OcrResult {
+  id             String   @id @default(uuid())
+  imageId        String
+  provider       String
+  language       String
+  qualityReport  Json
+  preprocessing  Json
+  fullText       String
+  regionCount    Int
+  processingMs   Int
+  success        Boolean  @default(true)
+  error          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  image   InspectionImage @relation(fields: [imageId], references: [id], onDelete: Cascade)
+  regions OcrRegion[]
+
+  @@index([imageId])
+}
+
+// A single detected text region — evidence-first: text, confidence, bbox, image reference.
+model OcrRegion {
+  id         String   @id @default(uuid())
+  resultId   String
+  text       String
+  confidence Float
+  bbox       Json
+  poly       Json?
+  seq        Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  result OcrResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+
+  @@index([resultId, seq])
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  name        String
+  genericName String?
+  brand       String?
+  manufacturer String?
+  category    String?
+  categoryConfidence Float?
+  categorySource     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  inspections Inspection[]
+
+  @@index([name])
+}
+
+model Declaration {
+  id                   String   @id @default(uuid())
+  inspectionId         String
+  imageId              String?
+  field                String
+  rawText              String
+  normalizedValue       String?
+  correctedValue        String?
+  correctionNote        String?
+  correctedById         String?
+  unit                 String?
+  currency             String?
+  ocrConfidence        Float?
+  extractionConfidence Float?
+  detectionMethod      String?
+  bbox                 Json?
+  ocrRegionIds         Json?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  inspection Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  image      InspectionImage? @relation(fields: [imageId], references: [id], onDelete: SetNull)
+  correctedBy User? @relation("DeclarationEditor", fields: [correctedById], references: [id], onDelete: SetNull)
+  results    ValidationResult[]
+
+  @@index([inspectionId, field])
+}
+
+// ---------------------------------------------------------------------------
+// Legal engine (passive in Phase 1 — populated and consumed by later phases)
+// ---------------------------------------------------------------------------
+
+model Rule {
+  id       String       @id @default(uuid())
+  ruleKey  String       @unique
+  versions RuleVersion[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model RuleVersion {
+  id              String   @id @default(uuid())
+  ruleId          String
+  ruleNumber      String
+  subRule         String?
+  source          String
+  title           String
+  requirement     String
+  scope           String?
+  applicability   Json?
+  exceptions      Json?
+  requiredEvidence Json?
+  validatorKey    String?
+  effectiveFrom   DateTime
+  effectiveTo     DateTime?
+  status          String   @default("ACTIVE")
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  rule    Rule              @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  results ValidationResult[]
+
+  @@index([ruleId, effectiveFrom])
+}
+
+model ValidationResult {
+  id             String          @id @default(uuid())
+  inspectionId   String
+  declarationId  String?
+  ruleVersionId  String?
+  ruleId         String
+  status         ValidationStatus
+  confidence     Float           @default(0)
+  reason         String
+  evidence       Json?
+  validatorVersion String?
+  inputs         Json?
+  source         String?
+  // Human review outcome — stored SEPARATELY from the AI status, never overwriting it.
+  humanStatus    ValidationStatus?
+  humanComment   String?
+  reviewedById   String?
+  reviewedAt     DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  inspection  Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  declaration Declaration? @relation(fields: [declarationId], references: [id], onDelete: SetNull)
+  ruleVersion RuleVersion? @relation(fields: [ruleVersionId], references: [id], onDelete: SetNull)
+  violations  Violation[]
+
+  @@index([inspectionId, status])
+}
+
+model Violation {
+  id               String   @id @default(uuid())
+  inspectionId     String
+  validationResultId String?
+  ruleId           String
+  severity         String   @default("MEDIUM")
+  description      String
+  correctedByReview Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  inspection     Inspection      @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  validationResult ValidationResult? @relation(fields: [validationResultId], references: [id], onDelete: SetNull)
+
+  @@index([inspectionId])
+}
+
+model Evidence {
+  id           String       @id @default(uuid())
+  inspectionId String
+  imageId      String?
+  kind         EvidenceKind
+  bbox         Json?
+  snippet      String?
+  payload      Json?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  inspection Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+
+  @@index([inspectionId, kind])
+}
+
+model Review {
+  id            String   @id @default(uuid())
+  inspectionId  String
+  reviewerId    String?
+  decision      String
+  notes         String?
+  ruleId        String?
+  targetId      String?
+  oldValue      String?
+  newValue      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  inspection Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  reviewer   User?      @relation(fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@index([inspectionId])
+}
+
+model Report {
+  id           String       @id @default(uuid())
+  inspectionId String
+  generatedById String?
+  format       ReportFormat @default(PDF)
+  storageKey   String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  inspection   Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  generatedBy  User?      @relation(fields: [generatedById], references: [id], onDelete: SetNull)
+
+  @@index([inspectionId])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([actorId, createdAt])
+}

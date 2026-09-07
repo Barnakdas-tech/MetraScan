@@ -1,0 +1,44 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+*.log
+.DS_Store
+
+# Environment / secrets — never commit
+.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+**/.env.*.local
+
+# Build outputs / cache
+.vite/
+apps/web/dist/
+
+# API storage (data files, not tracked)
+apps/api/storage/*
+!apps/api/storage/.gitkeep
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Scratch / temp files at project root
+fix.js
+fix2.js
+check_rules.js
+test-create.js
+test-helper.js
+test-navigation.jsx
+test-reports.ts
+
+# Temp debug / scratch files in apps/api
+apps/api/scratch_*.json
+apps/api/scratch_report_*.json
+apps/api/scratch_parse.js
+apps/api/scratch_test_path.js
+apps/api/check-bbox.cjs
+apps/api/test-fetch*.cjs
+apps/api/test-fetch*.js

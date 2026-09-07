@@ -1,0 +1,24 @@
+{
+  "name": "metrascan",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MetraScan — AI-assisted Legal Metrology inspection platform for packaged commodities (SIH26034).",
+  "packageManager": "pnpm@11.19.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter api --filter web dev",
+    "dev:api": "pnpm --filter api dev",
+    "dev:web": "pnpm --filter web dev",
+    "build": "pnpm -r build",
+    "test": "pnpm --filter api test",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "db:migrate": "pnpm --filter api db:migrate",
+    "db:deploy": "pnpm --filter api db:deploy",
+    "db:generate": "pnpm --filter api db:generate",
+    "db:seed": "pnpm --filter api db:seed",
+    "db:studio": "pnpm --filter api db:studio"
+  }
+}

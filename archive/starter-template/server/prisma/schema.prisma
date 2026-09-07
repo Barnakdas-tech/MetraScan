@@ -1,0 +1,69 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+enum InspectionStatus { PROCESSING PASS FAIL REVIEW }
+enum ResultStatus { PASS FAIL REVIEW NOT_APPLICABLE MANUAL_REQUIRED }
+
+model User {
+  id String @id @default(cuid())
+  name String
+  email String @unique
+  role String @default("INSPECTOR")
+  inspections Inspection[]
+  createdAt DateTime @default(now())
+}
+
+model Inspection {
+  id String @id @default(cuid())
+  userId String
+  user User @relation(fields:[userId], references:[id])
+  productName String?
+  category String?
+  packageType String?
+  imported Boolean @default(false)
+  inspectionDate DateTime @default(now())
+  overallStatus InspectionStatus @default(PROCESSING)
+  images InspectionImage[]
+  declarations Declaration[]
+  results ValidationResult[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model InspectionImage {
+  id String @id @default(cuid())
+  inspectionId String
+  inspection Inspection @relation(fields:[inspectionId], references:[id], onDelete:Cascade)
+  path String
+  imageType String?
+  qualityScore Float?
+  createdAt DateTime @default(now())
+}
+
+model Declaration {
+  id String @id @default(cuid())
+  inspectionId String
+  inspection Inspection @relation(fields:[inspectionId], references:[id], onDelete:Cascade)
+  field String
+  value String?
+  confidence Float?
+  sourceImageId String?
+  bboxJson Json?
+  createdAt DateTime @default(now())
+}
+
+model ValidationResult {
+  id String @id @default(cuid())
+  inspectionId String
+  inspection Inspection @relation(fields:[inspectionId], references:[id], onDelete:Cascade)
+  ruleId String
+  status ResultStatus
+  confidence Float?
+  reason String
+  evidenceJson Json?
+  createdAt DateTime @default(now())
+}
