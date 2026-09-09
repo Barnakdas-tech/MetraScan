@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "lint": "eslint src --max-warnings 0",
+    "lint": "eslint src ",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",

@@ -9,4 +9,8 @@ if [ ! -d .venv ]; then
   .venv/bin/pip install -e ".[paddle]"
 fi
 
+# Default to paddle (fastest, most accurate). Override via env: OCR_PROVIDER=tesseract ./run.sh
+export OCR_PROVIDER="${OCR_PROVIDER:-paddle}"
+
+echo "Starting MetraScan AI service with OCR_PROVIDER=$OCR_PROVIDER"
 exec .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload

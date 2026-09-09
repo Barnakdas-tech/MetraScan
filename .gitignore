@@ -42,3 +42,8 @@ apps/api/scratch_test_path.js
 apps/api/check-bbox.cjs
 apps/api/test-fetch*.cjs
 apps/api/test-fetch*.js
+
+# AI Training Outputs
+apps/api/training_data_exports/
+apps/ai/models/
+

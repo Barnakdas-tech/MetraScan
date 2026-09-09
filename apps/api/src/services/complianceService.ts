@@ -67,6 +67,33 @@ export async function runCompliance(inspectionId: string, user: { sub: string; r
 
   const result = evaluateCompliance(applicabilityInput, declarationEvidence, visual);
 
+  // --- ACTIVE LEARNING / CONFIDENCE GATE ---
+  // The legal engine evaluates compliance assuming the extracted text is true.
+  // We apply an active learning safety net: if the AI was uncertain about an extraction (< 0.7),
+  // we do not automatically accept a PASS. We route it to a human.
+  for (const outcome of result.results) {
+    if (outcome.status === "PASS" && outcome.evidence) {
+      // Find the declaration that matched this evidence
+      const sourceDecl = declarations.find(d => 
+        d.field === outcome.inputs?.field || 
+        d.rawText === outcome.evidence?.text
+      );
+      
+      const conf = sourceDecl?.extractionConfidence ?? 1.0;
+      if (conf < 0.7) {
+        outcome.status = "REVIEW";
+        outcome.reason = `Active Learning Gate: Rule logically passed based on AI extraction, but AI confidence was very low (${Math.round(conf * 100)}%). Human verification required. ` + outcome.reason;
+        outcome.source = (outcome.source || "") + " + AI Confidence Gate";
+      }
+    }
+  }
+  
+  // Re-calculate overall verdict based on gated outcomes
+  const hasFail = result.results.some(r => r.status === "FAIL");
+  const hasReview = result.results.some(r => r.status === "REVIEW" || r.status === "MANUAL_REQUIRED");
+  result.verdict = hasFail ? "NON_COMPLIANT" : hasReview ? "REVIEW_REQUIRED" : "COMPLIANT";
+  // ------------------------------------------
+
   // Persist ValidationResults (replace previous run)
   await prisma.validationResult.deleteMany({ where: { inspectionId } });
   await prisma.violation.deleteMany({ where: { inspectionId, correctedByReview: false } });
