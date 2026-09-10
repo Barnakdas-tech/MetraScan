@@ -1,12 +1,9 @@
 import PDFDocument from "pdfkit";
-import { readFileSync } from "node:fs";
 import { prisma } from "../db/prisma.js";
 import { ApiError } from "../utils/apiError.js";
 import { canAccessInspection } from "./inspectionService.js";
 import { storage } from "./storageService.js";
 import { audit } from "./auditService.js";
-import path from "node:path";
-import { env } from "../config/env.js";
 
 const BRAND_BLUE = "#0f4c81";
 const SLATE = "#475569";
@@ -95,6 +92,13 @@ export async function generateReport(inspectionId: string, user: { sub: string; 
   const summary = summarize(validationResults);
 
   // Build PDF into a buffer
+  // Prefetch evidence images asynchronously (never block the event loop).
+  const evidenceBuffers = await Promise.all(
+    images.map(img =>
+      storage.read(img.storageKey).then(b => ({ id: img.id, buffer: b })).catch(() => ({ id: img.id, buffer: null }))
+    )
+  );
+
   const pdfBuffer = await buildPdf({
     inspectionNumber: inspection.inspectionNumber,
     inspectionDate: inspection.inspectionDate,
@@ -102,7 +106,7 @@ export async function generateReport(inspectionId: string, user: { sub: string; 
     location: inspection.location ?? "Not specified",
     packageType: inspection.packageType,
     product,
-    images,
+    images: images.map(img => ({ ...img, buffer: evidenceBuffers.find(b => b.id === img.id)?.buffer ?? null })),
     declarations,
     validationResults,
     violations,
@@ -147,7 +151,7 @@ interface ReportData {
   location: string;
   packageType: string;
   product: { name: string; brand: string | null; category: string | null; manufacturer: string | null; genericName: string | null } | null;
-  images: { id: string; originalFilename: string; storageKey: string; sequence: number }[];
+  images: { id: string; originalFilename: string; storageKey: string; sequence: number; buffer: Buffer | null }[];
   declarations: { field: string; rawText: string; normalizedValue: string | null; correctedValue: string | null; unit: string | null; extractionConfidence: number | null }[];
   validationResults: { ruleId: string; status: string; confidence: number; reason: string; humanStatus: string | null; humanComment: string | null; source: string | null }[];
   violations: { ruleId: string; description: string }[];
@@ -282,7 +286,8 @@ function buildPdf(data: ReportData): Promise<Buffer> {
       const x = 48;
       data.images.forEach(img => {
         try {
-          const buf = readFileSync(path.join(getStorageRoot(), img.storageKey));
+          const buf = img.buffer;
+          if (!buf) return; // missing file — skip gracefully
           doc.moveDown(0.5);
           const topBefore = doc.y;
           doc.image(buf, x, doc.y, { fit: [imgW, imgW * 0.75], align: "center" });
@@ -332,12 +337,6 @@ function buildPdf(data: ReportData): Promise<Buffer> {
     doc.end();
   });
 }
-
-function getStorageRoot(): string {
-  const p = env.STORAGE_PATH;
-  return path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
-}
-
 
 function section(doc: PDFKit.PDFDocument, title: string) {
   doc.moveDown(0.8);

@@ -19,5 +19,5 @@ export const listProductsController = asyncHandler(async (req: Request, res: Res
 });
 
 export const getProductController = asyncHandler(async (req: Request, res: Response) => {
-  sendSuccess(res, await getProduct(req.params.id));
+  sendSuccess(res, await getProduct(req.params.id, req.user!));
 });

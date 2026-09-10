@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import { useAuth } from "../../auth/AuthContext";
 
 interface NavItem {
   to: string;
@@ -51,6 +52,15 @@ const SECTIONS: NavSection[] = [
 ];
 
 export default function Sidebar() {
+  const { user } = useAuth();
+  const canInspect = user?.role === "ADMIN" || user?.role === "INSPECTOR";
+  const sections = SECTIONS.map(section => ({
+    ...section,
+    items: section.items.filter(item => {
+      if (item.to.startsWith("/app/inspection/new") || item.to === "/app/scan") return canInspect;
+      return true;
+    }),
+  })).filter(section => section.items.length > 0);
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-surface-border bg-white">
       <div className="flex h-16 items-center gap-2 border-b border-surface-border px-5">
@@ -64,7 +74,7 @@ export default function Sidebar() {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4">
-        {SECTIONS.map(section => (
+        {sections.map(section => (
           <div key={section.title} className="mb-5">
             <p className="mb-1.5 px-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
               {section.title}

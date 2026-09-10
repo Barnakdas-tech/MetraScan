@@ -1,3 +1,6 @@
+-- CreateSchema
+CREATE SCHEMA IF NOT EXISTS "public";
+
 -- CreateEnum
 CREATE TYPE "Role" AS ENUM ('ADMIN', 'INSPECTOR', 'REVIEWER', 'VIEWER');
 
@@ -6,6 +9,12 @@ CREATE TYPE "InspectionStatus" AS ENUM ('DRAFT', 'PROCESSING', 'COMPLETED', 'UND
 
 -- CreateEnum
 CREATE TYPE "PackageType" AS ENUM ('RETAIL', 'WHOLESALE', 'IMPORTED', 'UNKNOWN');
+
+-- CreateEnum
+CREATE TYPE "ConsumerType" AS ENUM ('RETAIL', 'INDUSTRIAL', 'INSTITUTIONAL', 'UNKNOWN');
+
+-- CreateEnum
+CREATE TYPE "UploadStatus" AS ENUM ('PENDING', 'UPLOADING', 'UPLOADED', 'FAILED');
 
 -- CreateEnum
 CREATE TYPE "ValidationStatus" AS ENUM ('PASS', 'FAIL', 'REVIEW', 'NOT_APPLICABLE', 'MANUAL_REQUIRED');
@@ -31,6 +40,17 @@ CREATE TABLE "User" (
 );
 
 -- CreateTable
+CREATE TABLE "RevokedToken" (
+    "id" TEXT NOT NULL,
+    "jti" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "expiresAt" TIMESTAMP(3) NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "RevokedToken_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "Inspection" (
     "id" TEXT NOT NULL,
     "inspectionNumber" TEXT NOT NULL,
@@ -38,10 +58,14 @@ CREATE TABLE "Inspection" (
     "inspectorId" TEXT,
     "productId" TEXT,
     "packageType" "PackageType" NOT NULL DEFAULT 'UNKNOWN',
+    "intendedConsumer" "ConsumerType" NOT NULL DEFAULT 'UNKNOWN',
     "inspectionDate" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "location" TEXT,
     "notes" TEXT,
+    "year" INTEGER NOT NULL,
     "overallResult" "ValidationStatus",
+    "isDemo" BOOLEAN NOT NULL DEFAULT false,
+    "demoLabel" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -49,18 +73,68 @@ CREATE TABLE "Inspection" (
 );
 
 -- CreateTable
+CREATE TABLE "InspectionCounter" (
+    "year" INTEGER NOT NULL,
+    "lastNumber" INTEGER NOT NULL,
+
+    CONSTRAINT "InspectionCounter_pkey" PRIMARY KEY ("year")
+);
+
+-- CreateTable
 CREATE TABLE "InspectionImage" (
     "id" TEXT NOT NULL,
     "inspectionId" TEXT NOT NULL,
     "storageKey" TEXT NOT NULL,
-    "originalName" TEXT NOT NULL,
+    "thumbnailKey" TEXT,
+    "originalFilename" TEXT NOT NULL,
     "mimeType" TEXT NOT NULL,
-    "sizeBytes" INTEGER NOT NULL,
-    "qualityReport" JSONB,
+    "fileSize" INTEGER NOT NULL,
+    "width" INTEGER,
+    "height" INTEGER,
+    "sequence" INTEGER NOT NULL DEFAULT 0,
+    "uploadStatus" "UploadStatus" NOT NULL DEFAULT 'UPLOADED',
+    "qualityScore" DOUBLE PRECISION,
+    "ocrStatus" TEXT,
+    "analysisStatus" TEXT,
+    "isDemo" BOOLEAN NOT NULL DEFAULT false,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "InspectionImage_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "OcrResult" (
+    "id" TEXT NOT NULL,
+    "imageId" TEXT NOT NULL,
+    "provider" TEXT NOT NULL,
+    "language" TEXT NOT NULL,
+    "qualityReport" JSONB NOT NULL,
+    "preprocessing" JSONB NOT NULL,
+    "fullText" TEXT NOT NULL,
+    "regionCount" INTEGER NOT NULL,
+    "processingMs" INTEGER NOT NULL,
+    "success" BOOLEAN NOT NULL DEFAULT true,
+    "error" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "OcrResult_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "OcrRegion" (
+    "id" TEXT NOT NULL,
+    "resultId" TEXT NOT NULL,
+    "text" TEXT NOT NULL,
+    "confidence" DOUBLE PRECISION NOT NULL,
+    "bbox" JSONB NOT NULL,
+    "poly" JSONB,
+    "seq" INTEGER NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "OcrRegion_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -71,6 +145,8 @@ CREATE TABLE "Product" (
     "brand" TEXT,
     "manufacturer" TEXT,
     "category" TEXT,
+    "categoryConfidence" DOUBLE PRECISION,
+    "categorySource" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -85,12 +161,16 @@ CREATE TABLE "Declaration" (
     "field" TEXT NOT NULL,
     "rawText" TEXT NOT NULL,
     "normalizedValue" TEXT,
+    "correctedValue" TEXT,
+    "correctionNote" TEXT,
+    "correctedById" TEXT,
     "unit" TEXT,
     "currency" TEXT,
     "ocrConfidence" DOUBLE PRECISION,
     "extractionConfidence" DOUBLE PRECISION,
     "detectionMethod" TEXT,
     "bbox" JSONB,
+    "ocrRegionIds" JSONB,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -142,6 +222,14 @@ CREATE TABLE "ValidationResult" (
     "confidence" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "reason" TEXT NOT NULL,
     "evidence" JSONB,
+    "validatorVersion" TEXT,
+    "inputs" JSONB,
+    "source" TEXT,
+    "humanStatus" "ValidationStatus",
+    "humanComment" TEXT,
+    "reviewedById" TEXT,
+    "reviewedAt" TIMESTAMP(3),
+    "supersededById" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -185,6 +273,10 @@ CREATE TABLE "Review" (
     "reviewerId" TEXT,
     "decision" TEXT NOT NULL,
     "notes" TEXT,
+    "ruleId" TEXT,
+    "targetId" TEXT,
+    "oldValue" TEXT,
+    "newValue" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -221,19 +313,37 @@ CREATE TABLE "AuditLog" (
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "RevokedToken_jti_key" ON "RevokedToken"("jti");
+
+-- CreateIndex
+CREATE INDEX "RevokedToken_userId_idx" ON "RevokedToken"("userId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "Inspection_inspectionNumber_key" ON "Inspection"("inspectionNumber");
 
 -- CreateIndex
 CREATE INDEX "Inspection_status_createdAt_idx" ON "Inspection"("status", "createdAt");
 
 -- CreateIndex
+CREATE INDEX "Inspection_year_inspectionNumber_idx" ON "Inspection"("year", "inspectionNumber");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "InspectionImage_storageKey_key" ON "InspectionImage"("storageKey");
+
+-- CreateIndex
 CREATE INDEX "InspectionImage_inspectionId_idx" ON "InspectionImage"("inspectionId");
+
+-- CreateIndex
+CREATE INDEX "OcrResult_imageId_idx" ON "OcrResult"("imageId");
+
+-- CreateIndex
+CREATE INDEX "OcrRegion_resultId_seq_idx" ON "OcrRegion"("resultId", "seq");
 
 -- CreateIndex
 CREATE INDEX "Product_name_idx" ON "Product"("name");
 
 -- CreateIndex
-CREATE INDEX "Declaration_inspectionId_field_idx" ON "Declaration"("inspectionId", "field");
+CREATE UNIQUE INDEX "Declaration_inspectionId_field_key" ON "Declaration"("inspectionId", "field");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Rule_ruleKey_key" ON "Rule"("ruleKey");
@@ -263,6 +373,9 @@ CREATE INDEX "AuditLog_entityType_entityId_idx" ON "AuditLog"("entityType", "ent
 CREATE INDEX "AuditLog_actorId_createdAt_idx" ON "AuditLog"("actorId", "createdAt");
 
 -- AddForeignKey
+ALTER TABLE "RevokedToken" ADD CONSTRAINT "RevokedToken_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "Inspection" ADD CONSTRAINT "Inspection_inspectorId_fkey" FOREIGN KEY ("inspectorId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -272,10 +385,19 @@ ALTER TABLE "Inspection" ADD CONSTRAINT "Inspection_productId_fkey" FOREIGN KEY 
 ALTER TABLE "InspectionImage" ADD CONSTRAINT "InspectionImage_inspectionId_fkey" FOREIGN KEY ("inspectionId") REFERENCES "Inspection"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "OcrResult" ADD CONSTRAINT "OcrResult_imageId_fkey" FOREIGN KEY ("imageId") REFERENCES "InspectionImage"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "OcrRegion" ADD CONSTRAINT "OcrRegion_resultId_fkey" FOREIGN KEY ("resultId") REFERENCES "OcrResult"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "Declaration" ADD CONSTRAINT "Declaration_inspectionId_fkey" FOREIGN KEY ("inspectionId") REFERENCES "Inspection"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Declaration" ADD CONSTRAINT "Declaration_imageId_fkey" FOREIGN KEY ("imageId") REFERENCES "InspectionImage"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Declaration" ADD CONSTRAINT "Declaration_correctedById_fkey" FOREIGN KEY ("correctedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "RuleVersion" ADD CONSTRAINT "RuleVersion_ruleId_fkey" FOREIGN KEY ("ruleId") REFERENCES "Rule"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -312,3 +434,4 @@ ALTER TABLE "Report" ADD CONSTRAINT "Report_generatedById_fkey" FOREIGN KEY ("ge
 
 -- AddForeignKey
 ALTER TABLE "AuditLog" ADD CONSTRAINT "AuditLog_actorId_fkey" FOREIGN KEY ("actorId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+

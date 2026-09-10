@@ -35,6 +35,7 @@ test-navigation.jsx
 test-reports.ts
 
 # Temp debug / scratch files in apps/api
+apps/api/OLD_init_drifted_20260904/
 apps/api/scratch_*.json
 apps/api/scratch_report_*.json
 apps/api/scratch_parse.js
@@ -46,4 +47,3 @@ apps/api/test-fetch*.js
 # AI Training Outputs
 apps/api/training_data_exports/
 apps/ai/models/
-

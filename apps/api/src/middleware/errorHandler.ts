@@ -19,17 +19,17 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
   }
 
   // Prisma known errors
-  const anyErr = err as { code?: string; message?: string; meta?: unknown };
+  const anyErr = err as { code?: string; message?: string; type?: string };
   if (anyErr?.code === "P2002") {
     return void res.status(409).json({
       success: false,
-      error: { code: "CONFLICT", message: "A record with the same unique value already exists", details: anyErr.meta },
+      error: { code: "CONFLICT", message: "A record with the same unique value already exists" },
     });
   }
   if (anyErr?.code === "P2025") {
     return void res.status(404).json({
       success: false,
-      error: { code: "NOT_FOUND", message: "The requested record was not found", details: anyErr.meta },
+      error: { code: "NOT_FOUND", message: "The requested record was not found" },
     });
   }
   // Multer file-size limit
@@ -37,6 +37,23 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
     return void res.status(413).json({
       success: false,
       error: { code: "PAYLOAD_TOO_LARGE", message: "File exceeds the 10 MB limit" },
+    });
+  }
+  // Body-parser / multer payload limits and malformed multipart bodies
+  if (
+    anyErr?.type === "entity.too.large" ||
+    anyErr?.message?.includes("request entity too large") ||
+    anyErr?.code === "LIMIT_UNEXPECTED_FILE"
+  ) {
+    return void res.status(413).json({
+      success: false,
+      error: { code: "PAYLOAD_TOO_LARGE", message: "Request body exceeds the allowed size" },
+    });
+  }
+  if (anyErr?.message?.includes("Unexpected end of") || anyErr?.message?.includes("malformed")) {
+    return void res.status(400).json({
+      success: false,
+      error: { code: "BAD_REQUEST", message: "Malformed request body" },
     });
   }
 

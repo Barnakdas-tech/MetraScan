@@ -51,10 +51,8 @@ export async function analyzeInspection(inspectionId: string, user: { sub: strin
       // 2. OCR (runs its own quality + preprocessing internally; we reuse the report)
       const ocr = await runOcr(buffer, image.mimeType);
 
-      // 3. Persist: result header + regions (replace any previous run for this image)
-      await prisma.ocrRegion.deleteMany({ where: { result: { imageId: image.id } } });
-      await prisma.ocrResult.deleteMany({ where: { imageId: image.id } });
-
+      // 3. Persist: result header + regions. Previous runs are kept — OCR
+      // history is evidence; re-analysis appends rather than deleting.
       const result = await prisma.ocrResult.create({
         data: {
           imageId: image.id,

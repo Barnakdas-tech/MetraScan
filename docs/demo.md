@@ -3,7 +3,10 @@
 ## One-time setup
 
 1. pnpm install
-2. cp .env.example apps/api/.env — then edit DATABASE_URL and JWT_SECRET
+2. cp .env.example apps/api/.env — then edit DATABASE_URL, JWT_SECRET, and
+   AI_SERVICE_TOKEN (generate with openssl rand -hex 24). Put the SAME
+   AI_SERVICE_TOKEN in apps/ai/.env — the AI service rejects all requests
+   without a matching token.
 3. psql -c "CREATE DATABASE metrascan" and psql -c "CREATE DATABASE metrascan_test"
 4. pnpm db:migrate
 5. pnpm db:seed — optional: creates clearly-labeled DEMO data
@@ -11,9 +14,8 @@
 7. pnpm dev (API :4000 + web :5173)
 
 ## Demo account (from pnpm db:seed)
-
-- Email: demo@metrascan.local
-- Password: Demo-12345
+Set `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` environment variables before
+running `pnpm db:seed`. The seed refuses to run with default credentials.
 
 Seeded data carries isDemo=true and a visible DEMO badge in the UI (history rows, dashboard, workspace header) so it can never be mistaken for real inspection data.
 

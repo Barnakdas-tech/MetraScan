@@ -9,7 +9,7 @@ const reviewSchema = z.object({
   action: z.enum(["ACCEPT", "REJECT", "EDIT_DECLARATION", "CHANGE_RESULT", "COMMENT", "MARK_MANUAL"]),
   ruleId: z.string().optional(),
   targetId: z.string().uuid().optional(),
-  newValue: z.string().nullable().optional(),
+  newValue: z.enum(["PASS", "FAIL", "REVIEW", "MANUAL_REQUIRED"]).nullable().optional(),
   comment: z.string().max(2000).nullable().optional(),
 });
 

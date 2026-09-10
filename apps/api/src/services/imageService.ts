@@ -8,6 +8,9 @@ export const ALLOWED_IMAGE_TYPES: Record<string, string> = {
 };
 
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB
+export const MAX_IMAGE_PIXELS = 40 * 1000 * 1000; // 40 MP — blocks decompression bombs
+export const MAX_IMAGE_DIMENSION = 10000; // per side
+export const MAX_IMAGES_PER_INSPECTION = 24;
 
 /**
  * Deterministic image validation: correct declared MIME, non-empty, real
@@ -33,11 +36,17 @@ export async function validateImage(file: MulterFile): Promise<{
   // the browser's displayed dimensions and the AI service's OCR coordinates.
   let meta;
   try {
-    meta = await sharp(file.buffer).rotate().metadata();
+    meta = await sharp(file.buffer, { limitInputPixels: MAX_IMAGE_PIXELS }).rotate().metadata();
   } catch {
     throw new Error("File is not a valid, decodable image");
   }
   if (!meta.width || !meta.height) throw new Error("File is not a valid, decodable image");
+  if (meta.width * meta.height > MAX_IMAGE_PIXELS) {
+    throw new Error(`Image exceeds the maximum pixel count (${meta.width}x${meta.height})`);
+  }
+  if (meta.width > MAX_IMAGE_DIMENSION || meta.height > MAX_IMAGE_DIMENSION) {
+    throw new Error(`Image dimensions exceed the ${MAX_IMAGE_DIMENSION}px per-side limit`);
+  }
   // Sniff-format mismatch check: declared JPEG must actually be JPEG, etc.
   const sniffed = meta.format;
   const expected = { "image/jpeg": "jpeg", "image/png": "png", "image/webp": "webp" }[declared];

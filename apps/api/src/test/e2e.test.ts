@@ -42,7 +42,6 @@ async function runFullLifecycle(userToken: string, svgContents: string[], packag
 
   // 4. COMPLIANCE ENGINE
   const compRes = await request(app).post(`/api/v1/inspections/${inspId}/compliance`).set("Authorization", `Bearer ${userToken}`);
-  require("fs").writeFileSync(`scratch_${inspId}.json`, JSON.stringify(compRes.body, null, 2));
   
   return { inspId, compRes: compRes.body.data };
 }
@@ -84,7 +83,6 @@ describe("Refinement 3 - End-to-End Inspection Workflow", () => {
     }
     expect(reportRes.status).toBe(201);
     expect(reportRes.body.data.id).toBeDefined(); // Maybe it returns id instead of reportUrl? Or maybe url? Let's check the schema or log it.
-    require("fs").writeFileSync(`scratch_report_${inspId}.json`, JSON.stringify(reportRes.body, null, 2));
 
     // I. retrieval of the completed inspection from history
     const historyRes = await request(app).get(`/api/v1/inspections`).set("Authorization", `Bearer ${token}`);
@@ -138,10 +136,17 @@ describe("Refinement 3 - End-to-End Inspection Workflow", () => {
       }
     });
 
-    // G. human review of a REVIEW finding
+    // G. human review of a REVIEW finding — performed by a REVIEWER (separation of duties:
+    // the inspector who created the inspection may not review it)
+    const revEmail = `e2ereviewer${Math.random().toString(36).slice(2, 8)}@example.com`;
+    await request(app).post("/api/v1/auth/register").send({ name: "E2E Reviewer", email: revEmail, password: "Password123!" });
+    await prisma.user.update({ where: { email: revEmail }, data: { role: "REVIEWER" } });
+    const reviewerLogin = await request(app).post("/api/v1/auth/login").send({ email: revEmail, password: "Password123!" });
+    const reviewerToken = reviewerLogin.body.data.token;
+
     const reviewReq = await request(app)
       .post(`/api/v1/inspections/${inspId}/review`)
-      .set("Authorization", `Bearer ${token}`)
+      .set("Authorization", `Bearer ${reviewerToken}`)
       .send({ action: "CHANGE_RESULT", newValue: "PASS", targetId: revResult.id, ruleId: "R14", comment: "Looks good" });
     
     expect(reviewReq.status).toBe(201);

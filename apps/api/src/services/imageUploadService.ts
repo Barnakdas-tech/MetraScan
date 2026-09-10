@@ -3,7 +3,7 @@ import sharp from "sharp";
 import { prisma } from "../db/prisma.js";
 import { ApiError } from "../utils/apiError.js";
 import { storage } from "./storageService.js";
-import { validateImage } from "./imageService.js";
+import { validateImage, MAX_IMAGES_PER_INSPECTION } from "./imageService.js";
 
 export interface SavedImage {
   id: string;
@@ -32,7 +32,11 @@ function toDto(img: { id: string; inspectionId: string; storageKey: string; thum
 
 /** Small JPEG thumbnail for fast grid rendering; the original file is never modified. */
 async function makeThumbnail(buffer: Buffer): Promise<Buffer> {
-  return sharp(buffer).rotate().resize({ width: 480, withoutEnlargement: true }).jpeg({ quality: 72 }).toBuffer();
+  return sharp(buffer, { limitInputPixels: 40 * 1000 * 1000 })
+    .rotate()
+    .resize({ width: 480, withoutEnlargement: true })
+    .jpeg({ quality: 72 })
+    .toBuffer();
 }
 
 /**
@@ -46,6 +50,11 @@ export async function uploadImages(
 ): Promise<{ uploaded: SavedImage[]; failed: { originalFilename: string; reason: string }[] }> {
   const inspection = await prisma.inspection.findUnique({ where: { id: inspectionId } });
   if (!inspection) throw ApiError.notFound("Inspection not found");
+
+  const count = await prisma.inspectionImage.count({ where: { inspectionId } });
+  if (count + files.length > MAX_IMAGES_PER_INSPECTION) {
+    throw ApiError.badRequest(`An inspection may hold at most ${MAX_IMAGES_PER_INSPECTION} images (currently ${count})`);
+  }
 
   const last = await prisma.inspectionImage.findFirst({
     where: { inspectionId },

@@ -9,6 +9,7 @@ import { ApiError } from "../utils/apiError.js";
 const client = axios.create({
   baseURL: env.AI_SERVICE_URL,
   timeout: env.AI_TIMEOUT_MS,
+  headers: { "X-Internal-Token": env.AI_SERVICE_TOKEN },
 });
 
 export interface QualityResponse {

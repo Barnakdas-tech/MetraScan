@@ -107,6 +107,7 @@ Then edit `apps/api/.env`:
 | API_PORT | Backend port | 4000 |
 | CLIENT_URL | Frontend origin (CORS) | http://localhost:5173 |
 | AI_SERVICE_URL | FastAPI service URL (Phase 2+) | http://localhost:8000 |
+| AI_SERVICE_TOKEN | Shared secret for the API ↔ AI service boundary (required in production; same value in apps/ai/.env) | output of `openssl rand -hex 24` |
 | STORAGE_PATH | Local uploads root (Phase 2+) | ./storage |
 
 ### 3. Create the databases
@@ -140,10 +141,10 @@ pnpm test              # vitest against the metrascan_test database
 
 ## Default Roles
 
-New self-registered users get the **INSPECTOR** role. ADMIN accounts are created via the seed script only:
+Self-registration is available in **development only**; new self-registered users get the **INSPECTOR** role. In production, registration is disabled and accounts are provisioned by an operator via the seed script (required env) or an admin flow:
 
 ```bash
-SEED_ADMIN_EMAIL=admin@metrascan.local SEED_ADMIN_PASSWORD=ChangeMe-12345 pnpm db:seed
+SEED_ADMIN_EMAIL=<real-email> SEED_ADMIN_PASSWORD=<strong-password> pnpm db:seed
 ```
 
 Role permissions (Phase 1):
@@ -170,7 +171,7 @@ Errors:
 | Method | Endpoint | Auth | Purpose |
 |---|---|---|---|
 | GET | /api/v1/health | — | Service health |
-| POST | /api/v1/auth/register | — | Register (INSPECTOR role by default) |
+| POST | /api/v1/auth/register | — | Register (INSPECTOR role; development only) |
 | POST | /api/v1/auth/login | — | Login, returns JWT |
 | POST | /api/v1/auth/logout | JWT | Logout (client discards token) |
 | GET | /api/v1/auth/me | JWT | Current user |

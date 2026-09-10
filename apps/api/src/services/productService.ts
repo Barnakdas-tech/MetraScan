@@ -31,11 +31,12 @@ export async function listProducts(params: { q?: string; category?: string; page
   };
 }
 
-export async function getProduct(productId: string) {
+export async function getProduct(productId: string, user: { sub: string; role: string }) {
   const product = await prisma.product.findUnique({
     where: { id: productId },
     include: {
       inspections: {
+        where: user.role === "INSPECTOR" ? { inspectorId: user.sub } : undefined,
         orderBy: { createdAt: "desc" },
         take: 50,
         select: {
@@ -53,8 +54,11 @@ export async function getProduct(productId: string) {
   if (!product) throw ApiError.notFound("Product not found");
 
   // Compliance history: validation results across this product's inspections
+  // Scope cross-inspector findings the same way inspections are scoped:
+  // INSPECTORs see only their own; oversight roles see all.
+  const scope = user.role === "INSPECTOR" ? { inspectorId: user.sub } : {};
   const complianceHistory = await prisma.validationResult.findMany({
-    where: { inspection: { productId } },
+    where: { inspection: { productId, ...scope } },
     orderBy: { createdAt: "desc" },
     take: 100,
     select: {

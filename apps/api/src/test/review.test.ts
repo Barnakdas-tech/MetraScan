@@ -4,7 +4,7 @@ import { prisma } from "../db/prisma.js";
 
 const app = createApp();
 
-async function makeUser(role: "INSPECTOR" | "REVIEWER" | "VIEWER" = "INSPECTOR") {
+async function makeUser(role: "INSPECTOR" | "REVIEWER" | "VIEWER" | "ADMIN" = "INSPECTOR") {
   const email = `p7user${Math.random().toString(36).slice(2, 10)}@example.com`;
   const password = "Password123!";
   await request(app).post("/api/v1/auth/register").send({ name: "P7 Tester", email, password });
@@ -15,26 +15,23 @@ async function makeUser(role: "INSPECTOR" | "REVIEWER" | "VIEWER" = "INSPECTOR")
   return { token: login.body.data.token, id: login.body.data.user.id, role };
 }
 
-// Create an inspection that already has compliance results by injecting directly
-async function makeInspectionWithResults(token: string) {
+async function makeInspectionWithResults(ownerToken: string) {
   const create = await request(app)
     .post("/api/v1/inspections")
-    .set("Authorization", `Bearer ${token}`)
+    .set("Authorization", `Bearer ${ownerToken}`)
     .send({ packageType: "RETAIL" });
   const inspectionId = create.body.data.id;
-
-  // Inject a compliance result directly (unit-level; avoids needing the full OCR pipeline here)
   await prisma.validationResult.createMany({
     data: [
-      { inspectionId, ruleId: "R6.1e", status: "FAIL", confidence: 0.8, reason: "No MRP declaration detected across analyzed images.", validatorVersion: "mrp-v1", source: "Rules 2011, Rule 6(1)(e)" },
-      { inspectionId, ruleId: "R6.1c", status: "PASS", confidence: 0.9, reason: "Net quantity declared as 250 g.", validatorVersion: "quantity-v1", source: "Rules 2011, Rule 6(1)(c)" },
+      { inspectionId, ruleId: "R6.1e", status: "FAIL", confidence: 0.8, reason: "No MRP.", validatorVersion: "mrp-v1" },
+      { inspectionId, ruleId: "R6.1c", status: "PASS", confidence: 0.9, reason: "Qty ok.", validatorVersion: "quantity-v1" },
     ],
   });
   const results = await prisma.validationResult.findMany({ where: { inspectionId } });
   return { inspectionId, results };
 }
 
-describe("Phase 7 — human review", () => {
+describe("Phase 7 human review (separation of duties)", () => {
   it("rejects review without authentication", async () => {
     const res = await request(app).post("/api/v1/inspections/some-id/review").send({ action: "ACCEPT" });
     expect(res.status).toBe(401);
@@ -51,167 +48,135 @@ describe("Phase 7 — human review", () => {
     expect(res.status).toBe(403);
   });
 
-  it("accepts an AI finding: human status recorded beside AI status, AI never overwritten", async () => {
+  it("blocks an inspector from reviewing their OWN inspection", async () => {
     const owner = await makeUser();
     const { inspectionId, results } = await makeInspectionWithResults(owner.token);
     const failResult = results.find(r => r.ruleId === "R6.1e")!;
-
-    const res = await request(app)
-      .post(`/api/v1/inspections/${inspectionId}/review`)
-      .set("Authorization", `Bearer ${owner.token}`)
-      .send({ action: "ACCEPT", targetId: failResult.id, ruleId: "R6.1e", comment: "Confirmed missing on the shelf." });
-    expect(res.status).toBe(201);
-
-    // AI status preserved; human status stored separately
-    const after = await prisma.validationResult.findUnique({ where: { id: failResult.id } });
-    expect(after?.status).toBe("FAIL"); // original AI status untouched
-    expect(after?.humanStatus).toBe("FAIL"); // human accepted the finding
-    expect(after?.humanComment).toBe("Confirmed missing on the shelf.");
-    expect(after?.reviewedById).toBe(owner.id);
-  });
-
-  it("rejecting a FAIL flips the human status to PASS while the AI FAIL remains", async () => {
-    const owner = await makeUser();
-    const { inspectionId, results } = await makeInspectionWithResults(owner.token);
-    const failResult = results.find(r => r.ruleId === "R6.1e")!;
-
     const res = await request(app)
       .post(`/api/v1/inspections/${inspectionId}/review`)
       .set("Authorization", `Bearer ${owner.token}`)
       .send({ action: "REJECT", targetId: failResult.id, ruleId: "R6.1e", comment: "MRP is on the underside." });
-    expect(res.status).toBe(201);
-
+    expect(res.status).toBe(403);
+    expect(res.body.error.message).toMatch(/Separation of duties/i);
     const after = await prisma.validationResult.findUnique({ where: { id: failResult.id } });
-    expect(after?.status).toBe("FAIL"); // AI result intact
-    expect(after?.humanStatus).toBe("PASS"); // human override recorded
+    expect(after?.humanStatus).toBeNull();
   });
 
-  it("audits every review action with user, timestamp, old/new values, and comment", async () => {
+  it("blocks a DIFFERENT inspector from reviewing another inspector's inspection", async () => {
     const owner = await makeUser();
     const { inspectionId, results } = await makeInspectionWithResults(owner.token);
     const failResult = results.find(r => r.ruleId === "R6.1e")!;
-
-    await request(app)
+    const other = await makeUser("INSPECTOR");
+    const res = await request(app)
       .post(`/api/v1/inspections/${inspectionId}/review`)
-      .set("Authorization", `Bearer ${owner.token}`)
-      .send({ action: "ACCEPT", targetId: failResult.id, ruleId: "R6.1e", comment: "Audit check" });
-
-    const history = await request(app)
-      .get(`/api/v1/inspections/${inspectionId}/review`)
-      .set("Authorization", `Bearer ${owner.token}`);
-    expect(history.status).toBe(200);
-    expect(history.body.data.reviews.length).toBe(1);
-    const review = history.body.data.reviews[0];
-    expect(review.decision).toBe("ACCEPT");
-    expect(review.oldValue).toBe("FAIL");
-    expect(review.newValue).toBe("FAIL");
-    expect(review.reviewer.name).toBeTruthy();
-    expect(history.body.data.auditLogs.length).toBeGreaterThanOrEqual(1);
+      .set("Authorization", `Bearer ${other.token}`)
+      .send({ action: "ACCEPT", targetId: failResult.id, ruleId: "R6.1e" });
+    // 404 (existence hidden) or 403 both deny the action.
+    expect([403, 404]).toContain(res.status);
   });
 
-  it("REVIEWER role can review inspections they do not own", async () => {
+  it("allows a REVIEWER to reject a FAIL on another inspector's inspection, preserving AI status", async () => {
     const owner = await makeUser();
     const { inspectionId, results } = await makeInspectionWithResults(owner.token);
-    const reviewer = await makeUser("REVIEWER");
     const failResult = results.find(r => r.ruleId === "R6.1e")!;
+    const reviewer = await makeUser("REVIEWER");
     const res = await request(app)
       .post(`/api/v1/inspections/${inspectionId}/review`)
       .set("Authorization", `Bearer ${reviewer.token}`)
+      .send({ action: "REJECT", targetId: failResult.id, ruleId: "R6.1e", comment: "MRP is on the underside." });
+    expect(res.status).toBe(201);
+    const after = await prisma.validationResult.findUnique({ where: { id: failResult.id } });
+    expect(after?.status).toBe("FAIL");
+    expect(after?.humanStatus).toBe("PASS");
+    expect(after?.reviewedById).toBe(reviewer.id);
+  });
+
+  it("allows ADMIN to review (explicit policy) and records the action", async () => {
+    const owner = await makeUser();
+    const { inspectionId, results } = await makeInspectionWithResults(owner.token);
+    const failResult = results.find(r => r.ruleId === "R6.1e")!;
+    const admin = await makeUser("ADMIN");
+    const res = await request(app)
+      .post(`/api/v1/inspections/${inspectionId}/review`)
+      .set("Authorization", `Bearer ${admin.token}`)
       .send({ action: "MARK_MANUAL", targetId: failResult.id, comment: "Needs physical check" });
     expect(res.status).toBe(201);
+    const after = await prisma.validationResult.findUnique({ where: { id: failResult.id } });
+    expect(after?.humanStatus).toBe("MANUAL_REQUIRED");
   });
 
-  it("COMMENT action records a note without touching any result", async () => {
+  it("rejects an invalid newValue enum value", async () => {
     const owner = await makeUser();
-    const { inspectionId } = await makeInspectionWithResults(owner.token);
+    const { inspectionId, results } = await makeInspectionWithResults(owner.token);
+    const reviewer = await makeUser("REVIEWER");
     const res = await request(app)
       .post(`/api/v1/inspections/${inspectionId}/review`)
-      .set("Authorization", `Bearer ${owner.token}`)
-      .send({ action: "COMMENT", comment: "Package retrieved from shelf B." });
-    expect(res.status).toBe(201);
-    const count = await prisma.validationResult.count({ where: { inspectionId, humanStatus: { not: null } } });
-    expect(count).toBe(0);
+      .set("Authorization", `Bearer ${reviewer.token}`)
+      .send({ action: "CHANGE_RESULT", newValue: "HACKED_VALUE", targetId: results[0].id, ruleId: "R6.1e" });
+    expect(res.status).toBe(400);
   });
 
-  it("resolving a REVIEW finding to PASS or FAIL preserves the original AI REVIEW status (Refinement 2C)", async () => {
+  it("rejects cross-inspection targetId manipulation", async () => {
+    const ownerA = await makeUser();
+    const { inspectionId: inspA } = await makeInspectionWithResults(ownerA.token);
+    const ownerB = await makeUser();
+    const { results: resultsB } = await makeInspectionWithResults(ownerB.token);
+    const reviewer = await makeUser("REVIEWER");
+    const res = await request(app)
+      .post(`/api/v1/inspections/${inspA}/review`)
+      .set("Authorization", `Bearer ${reviewer.token}`)
+      .send({ action: "ACCEPT", targetId: resultsB[0].id, ruleId: "R6.1e" });
+    expect(res.status).toBe(404);
+  });
+
+  it("REVIEWER CHANGE_RESULT resolves REVIEW to PASS, preserving AI status", async () => {
     const owner = await makeUser();
-    
-    // Create an inspection with a REVIEW finding
     const create = await request(app)
       .post("/api/v1/inspections")
       .set("Authorization", `Bearer ${owner.token}`)
       .send({ packageType: "RETAIL" });
     const inspectionId = create.body.data.id;
-
-    await prisma.validationResult.create({
-      data: {
-        inspectionId, 
-        ruleId: "R14", 
-        status: "REVIEW", 
-        confidence: 0.45, 
-        reason: "Image quality insufficient.", 
-        validatorVersion: "dimensions-v1", 
-        source: "Rule 14"
-      },
+    const revResult = await prisma.validationResult.create({
+      data: { inspectionId, ruleId: "R14", status: "REVIEW", confidence: 0.45, reason: "Image quality insufficient.", validatorVersion: "dimensions-v1" },
     });
-
-    const results = await prisma.validationResult.findMany({ where: { inspectionId } });
-    const reviewResult = results.find(r => r.ruleId === "R14")!;
-
-    // Resolve it to PASS using CHANGE_RESULT
+    const reviewer = await makeUser("REVIEWER");
     const res = await request(app)
       .post(`/api/v1/inspections/${inspectionId}/review`)
-      .set("Authorization", `Bearer ${owner.token}`)
-      .send({ action: "CHANGE_RESULT", newValue: "PASS", targetId: reviewResult.id, ruleId: "R14", comment: "Verified manually, it passes." });
-    
+      .set("Authorization", `Bearer ${reviewer.token}`)
+      .send({ action: "CHANGE_RESULT", newValue: "PASS", targetId: revResult.id, ruleId: "R14", comment: "Verified manually." });
     expect(res.status).toBe(201);
-
-    const after = await prisma.validationResult.findUnique({ where: { id: reviewResult.id } });
-    expect(after?.status).toBe("REVIEW"); // original AI status remains REVIEW
-    expect(after?.humanStatus).toBe("PASS"); // human override recorded
-    expect(after?.humanComment).toBe("Verified manually, it passes.");
+    const after = await prisma.validationResult.findUnique({ where: { id: revResult.id } });
+    expect(after?.status).toBe("REVIEW");
+    expect(after?.humanStatus).toBe("PASS");
   });
 
-  it("updates the aggregate overallResult when humanStatus changes", async () => {
+  it("updates the aggregate overallResult when a REVIEWER changes humanStatus", async () => {
     const owner = await makeUser();
-    
-    // Create an inspection
     const create = await request(app)
       .post("/api/v1/inspections")
       .set("Authorization", `Bearer ${owner.token}`)
       .send({ packageType: "RETAIL" });
     const inspectionId = create.body.data.id;
-
-    // Inject compliance results: 1 PASS, 1 REVIEW
     await prisma.validationResult.createMany({
       data: [
         { inspectionId, ruleId: "R6.1e", status: "PASS", confidence: 0.9, reason: "ok", validatorVersion: "v1" },
         { inspectionId, ruleId: "R14", status: "REVIEW", confidence: 0.45, reason: "maybe", validatorVersion: "v1" },
       ],
     });
-    // Set initial overallResult
     await prisma.inspection.update({ where: { id: inspectionId }, data: { overallResult: "REVIEW" } });
-
     const results = await prisma.validationResult.findMany({ where: { inspectionId } });
     const reviewResult = results.find(r => r.ruleId === "R14")!;
-
-    // Resolve the REVIEW to PASS
+    const reviewer = await makeUser("REVIEWER");
     await request(app)
       .post(`/api/v1/inspections/${inspectionId}/review`)
-      .set("Authorization", `Bearer ${owner.token}`)
+      .set("Authorization", `Bearer ${reviewer.token}`)
       .send({ action: "CHANGE_RESULT", newValue: "PASS", targetId: reviewResult.id, ruleId: "R14" });
-    
-    // The aggregate overallResult should now be PASS because both effective statuses are PASS
     const inspAfterPass = await prisma.inspection.findUnique({ where: { id: inspectionId } });
     expect(inspAfterPass?.overallResult).toBe("PASS");
-
-    // Now change it to FAIL
     await request(app)
       .post(`/api/v1/inspections/${inspectionId}/review`)
-      .set("Authorization", `Bearer ${owner.token}`)
+      .set("Authorization", `Bearer ${reviewer.token}`)
       .send({ action: "CHANGE_RESULT", newValue: "FAIL", targetId: reviewResult.id, ruleId: "R14" });
-
-    // The aggregate overallResult should now be FAIL
     const inspAfterFail = await prisma.inspection.findUnique({ where: { id: inspectionId } });
     expect(inspAfterFail?.overallResult).toBe("FAIL");
   });

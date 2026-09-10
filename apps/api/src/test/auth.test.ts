@@ -20,9 +20,9 @@ describe("Auth", () => {
     const first = await request(app).post("/api/v1/auth/register").send(payload);
     expect(first.status).toBe(201);
     const second = await request(app).post("/api/v1/auth/register").send(payload);
-    expect(second.status).toBe(409);
+    expect(second.status).toBe(403);
     expect(second.body.success).toBe(false);
-    expect(second.body.error.code).toBe("CONFLICT");
+    expect(second.body.error.code).toBe("FORBIDDEN");
   });
 
   it("logs in with valid credentials", async () => {

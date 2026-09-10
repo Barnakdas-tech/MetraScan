@@ -2,6 +2,7 @@ import { prisma } from "../db/prisma.js";
 import { ApiError } from "../utils/apiError.js";
 import { canAccessInspection } from "./inspectionService.js";
 import { audit } from "./auditService.js";
+import { HUMAN_STATUS_VALUES } from "../db/prismaTypes.js";
 
 const REVIEW_ACTIONS = ["ACCEPT", "REJECT", "EDIT_DECLARATION", "CHANGE_RESULT", "COMMENT", "MARK_MANUAL"] as const;
 type ReviewAction = (typeof REVIEW_ACTIONS)[number];
@@ -19,9 +20,12 @@ async function requireReviewAccess(inspectionId: string, user: { sub: string; ro
   if (!inspection) throw ApiError.notFound("Inspection not found");
   const access = canAccessInspection(user, inspection);
   if (!access.canView) throw ApiError.notFound("Inspection not found");
-  // Reviewer/Admin may act on any inspection; Inspectors on their own; VIEWER read-only.
+  // Separation of duties: an inspector may never review their own inspection.
+  // Only REVIEWER or ADMIN (different humans from the creator) may act.
   if (user.role === "VIEWER") throw ApiError.forbidden("VIEWER role cannot submit review actions");
-  if (user.role === "INSPECTOR" && !access.canEdit) throw ApiError.forbidden("Inspectors can review only their own inspections");
+  if (user.role === "INSPECTOR") {
+    throw ApiError.forbidden("Separation of duties: inspectors cannot review their own inspections; a REVIEWER or ADMIN must decide");
+  }
   return inspection;
 }
 
@@ -46,7 +50,13 @@ export async function submitReview(inspectionId: string, user: { sub: string; ro
     let humanStatus: typeof result.humanStatus;
     if (action === "ACCEPT") humanStatus = result.status; // confirm the AI finding
     else if (action === "REJECT") humanStatus = result.status === "FAIL" ? "PASS" : result.status === "PASS" ? "FAIL" : result.status;
-    else if (action === "CHANGE_RESULT") humanStatus = (newValue as never) ?? null;
+    else if (action === "CHANGE_RESULT") {
+      const v = (newValue ?? "").trim().toUpperCase();
+      if (!HUMAN_STATUS_VALUES.includes(v as never)) {
+        throw ApiError.badRequest("newValue must be one of: PASS, FAIL, REVIEW, MANUAL_REQUIRED");
+      }
+      humanStatus = v as never;
+    }
     else humanStatus = "MANUAL_REQUIRED";
 
     await prisma.validationResult.update({

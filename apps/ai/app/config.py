@@ -1,5 +1,15 @@
 import os
 
+try:
+    # Load .env from the app root (apps/ai/.env) if present. No repo-visible
+    # secret defaults exist; the operator sets AI_SERVICE_TOKEN in both the
+    # API and AI service environments.
+    from dotenv import load_dotenv
+
+    load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
+except ImportError:  # python-dotenv is optional; env vars still work
+    pass
+
 
 class Settings:
     """Environment-driven configuration."""

@@ -94,11 +94,14 @@ export async function runCompliance(inspectionId: string, user: { sub: string; r
   result.verdict = hasFail ? "NON_COMPLIANT" : hasReview ? "REVIEW_REQUIRED" : "COMPLIANT";
   // ------------------------------------------
 
-  // Persist ValidationResults (replace previous run)
-  await prisma.validationResult.deleteMany({ where: { inspectionId } });
-  await prisma.violation.deleteMany({ where: { inspectionId, correctedByReview: false } });
+  // Append-only audit trail: supersede (never delete) previous run rows, then
+  // write the new run as current. Historical evidence stays queryable.
+  const previousRun = await prisma.validationResult.findMany({
+    where: { inspectionId, supersededById: null },
+    select: { id: true, ruleId: true, status: true, humanStatus: true },
+  });
   for (const outcome of result.results) {
-    await prisma.validationResult.create({
+    const created = await prisma.validationResult.create({
       data: {
         inspectionId,
         ruleId: outcome.ruleId,
@@ -111,15 +114,28 @@ export async function runCompliance(inspectionId: string, user: { sub: string; r
         source: outcome.source ?? null,
       },
     });
-    if (outcome.status === "FAIL") {
-      await prisma.violation.create({
-        data: {
-          inspectionId,
-          ruleId: outcome.ruleId,
-          severity: "MEDIUM",
-          description: outcome.reason,
-        },
+    // Point any previous row for the same rule at the new row (supersession).
+    const prev = previousRun.find(p => p.ruleId === outcome.ruleId);
+    if (prev) {
+      await prisma.validationResult.update({
+        where: { id: prev.id },
+        data: { supersededById: created.id },
       });
+    }
+    if (outcome.status === "FAIL") {
+      const existingOpen = await prisma.violation.findFirst({
+        where: { inspectionId, ruleId: outcome.ruleId, correctedByReview: false },
+      });
+      if (!existingOpen) {
+        await prisma.violation.create({
+          data: {
+            inspectionId,
+            ruleId: outcome.ruleId,
+            severity: "MEDIUM",
+            description: outcome.reason,
+          },
+        });
+      }
     }
   }
 
@@ -139,7 +155,7 @@ export async function getCompliance(inspectionId: string, user: { sub: string; r
   if (!access.canView) throw ApiError.notFound("Inspection not found");
 
   const results = await prisma.validationResult.findMany({
-    where: { inspectionId },
+    where: { inspectionId, supersededById: null },
     orderBy: { createdAt: "asc" },
   });
   const violations = await prisma.violation.findMany({ where: { inspectionId } });

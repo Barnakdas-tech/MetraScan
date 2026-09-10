@@ -1,9 +1,11 @@
 import io
+import os
+import hmac
 import time
 
 import cv2
 import numpy as np
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
 from PIL import Image, ImageOps
 
@@ -14,6 +16,20 @@ from .preprocess import preprocess
 from .quality import analyze_quality
 
 app = FastAPI(title="MetraScan AI Service", version="0.1.0")
+
+AI_SERVICE_TOKEN = os.getenv("AI_SERVICE_TOKEN", "")
+
+
+@app.middleware("http")
+async def require_internal_token(request: Request, call_next):
+    if not AI_SERVICE_TOKEN:
+        # Fail closed: without a configured token the service refuses all
+        # traffic instead of accepting an attacker's value by omission.
+        return JSONResponse(status_code=503, content={"detail": "AI service token not configured"})
+    provided = request.headers.get("X-Internal-Token", "")
+    if not hmac.compare_digest(provided, AI_SERVICE_TOKEN):
+        return JSONResponse(status_code=401, content={"detail": "Internal service authentication required"})
+    return await call_next(request)
 
 
 def load_image(data: bytes) -> np.ndarray:
@@ -54,7 +70,10 @@ def health():
 @app.post("/api/quality")
 async def quality_endpoint(file: UploadFile = File(...)):
     started = time.monotonic()
-    image = load_image(await file.read())
+    data = await file.read(settings.MAX_IMAGE_BYTES + 1)
+    if len(data) > settings.MAX_IMAGE_BYTES:
+        raise HTTPException(413, "File exceeds size limit")
+    image = load_image(data)
     report = analyze_quality(image)
     return {
         "success": True,
@@ -68,7 +87,10 @@ async def quality_endpoint(file: UploadFile = File(...)):
 @app.post("/api/ocr")
 async def ocr_endpoint(file: UploadFile = File(...)):
     started = time.monotonic()
-    image = load_image(await file.read())
+    data = await file.read(settings.MAX_IMAGE_BYTES + 1)
+    if len(data) > settings.MAX_IMAGE_BYTES:
+        raise HTTPException(413, "File exceeds size limit")
+    image = load_image(data)
 
     # 1. Quality first — preprocessing decisions are driven by its signals
     quality = analyze_quality(image)

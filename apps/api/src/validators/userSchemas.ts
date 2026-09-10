@@ -7,5 +7,11 @@ export const updateProfileSchema = z.object({
 
 export const updatePasswordSchema = z.object({
   currentPassword: z.string().min(1),
-  newPassword: z.string().min(8).max(72),
+  newPassword: z
+    .string()
+    .min(10, "Password must be at least 10 characters")
+    .max(72)
+    .refine(v => /[a-z]/.test(v) && /[A-Z]/.test(v) && /[0-9]/.test(v), {
+      message: "Password must mix upper-case, lower-case, and digits",
+    }),
 });

@@ -51,17 +51,14 @@ export async function extractAndStoreDeclarations(inspectionId: string, user: { 
     if (!existing || c.confidence > existing.confidence) byField.set(c.field, c);
   }
 
-  // Persist: replace previous extractions for this inspection (OCR re-run regenerates them).
-  // Human corrections are preserved: correctedValue lives on the Declaration row;
-  // but since we delete+recreate on re-extraction, corrections are re-recorded only if the
-  // field set is stable. To keep this phase simple and honest, re-extraction resets
-  // corrections and the UI shows the fresh AI values (documented behavior).
-  await prisma.declaration.deleteMany({ where: { inspectionId } });
-
+  // Preserve human corrections across re-extraction: upsert by (inspectionId, field).
+  // The AI re-detection updates raw evidence; correctedValue/correctionNote/
+  // correctedById survive untouched on the existing row.
   const created = await Promise.all(
     Array.from(byField.values()).map(c =>
-      prisma.declaration.create({
-        data: {
+      prisma.declaration.upsert({
+        where: { inspectionId_field: { inspectionId, field: c.field } },
+        create: {
           inspectionId,
           imageId: c.imageId,
           field: c.field,
@@ -74,6 +71,19 @@ export async function extractAndStoreDeclarations(inspectionId: string, user: { 
           detectionMethod: c.detectionMethod,
           bbox: c.bbox as never,
           ocrRegionIds: c.ocrRegionIds as never,
+        },
+        update: {
+          imageId: c.imageId,
+          rawText: c.rawText,
+          normalizedValue: c.normalizedValue,
+          unit: c.unit,
+          currency: c.currency,
+          ocrConfidence: c.ocrConfidence,
+          extractionConfidence: c.confidence,
+          detectionMethod: c.detectionMethod,
+          bbox: c.bbox as never,
+          ocrRegionIds: c.ocrRegionIds as never,
+          // correctedValue / correctionNote / correctedById intentionally preserved
         },
       })
     )

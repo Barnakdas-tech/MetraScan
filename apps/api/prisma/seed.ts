@@ -12,8 +12,14 @@ async function main() {
   console.log("Seeding DEMO data (clearly labeled)...");
 
   // Demo inspector account (change the password before any public demo)
-  const demoEmail = process.env.SEED_ADMIN_EMAIL || "demo@metrascan.local";
-  const demoPassword = process.env.SEED_ADMIN_PASSWORD || "Demo-12345";
+  const demoEmail = process.env.SEED_ADMIN_EMAIL;
+  const demoPassword = process.env.SEED_ADMIN_PASSWORD;
+  if (!demoEmail || !demoPassword) {
+    console.error(
+      "SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD are required. Refusing to seed with default credentials."
+    );
+    process.exit(1);
+  }
   const passwordHash = await bcrypt.hash(demoPassword, 12);
   const demoUser = await prisma.user.upsert({
     where: { email: demoEmail },

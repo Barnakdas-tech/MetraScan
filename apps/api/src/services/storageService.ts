@@ -35,13 +35,15 @@ class LocalDiskStorage implements StorageProvider {
     // storageKey is always server-generated (images/YYYY-MM-DD/uuid.ext) — but
     // still normalize and refuse anything that tries to escape the storage root.
     const absPath = path.normalize(path.join(this.root, storageKey));
-    if (!absPath.startsWith(this.root + path.sep)) throw ApiError.badRequest("Invalid storage key");
+    if (!storageKey.startsWith("images/") || !absPath.startsWith(this.root + path.sep)) throw ApiError.badRequest("Invalid storage key");
     await unlink(absPath).catch(() => undefined);
   }
 
   async read(storageKey: string): Promise<Buffer> {
     const absPath = path.normalize(path.join(this.root, storageKey));
-    if (!absPath.startsWith(this.root + path.sep)) throw ApiError.badRequest("Invalid storage key");
+    if (!storageKey.startsWith("images/") || !absPath.startsWith(this.root + path.sep)) {
+      throw ApiError.badRequest("Invalid storage key");
+    }
     return readFile(absPath);
   }
 

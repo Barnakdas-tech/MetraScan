@@ -3,6 +3,7 @@ import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import AppLayout from "./layouts/AppLayout";
 import RequireAuth from "./components/RequireAuth";
+import RequireRole from "./components/RequireRole";
 import DashboardPage from "./pages/app/DashboardPage";
 import NewInspectionPage from "./pages/app/NewInspectionPage";
 import InspectionDetailPage from "./pages/app/InspectionDetailPage";
@@ -31,9 +32,9 @@ export default function App() {
       <Route path="/app" element={<RequireAuth><AppLayout /></RequireAuth>}>
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<DashboardPage />} />
-        <Route path="inspection/new" element={<NewInspectionPage />} />
+        <Route path="inspection/new" element={<RequireRole roles={["ADMIN", "INSPECTOR"]}><NewInspectionPage /></RequireRole>} />
         <Route path="inspection/:inspectionId" element={<InspectionDetailPage />} />
-        <Route path="scan" element={<ScanPage />} />
+        <Route path="scan" element={<RequireRole roles={["ADMIN", "INSPECTOR"]}><ScanPage /></RequireRole>} />
         <Route path="inspections" element={<InspectionsPage />} />
         <Route path="inspections/:inspectionId" element={<InspectionHistoryDetailPage />} />
         <Route path="products" element={<ProductsPage />} />

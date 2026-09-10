@@ -1,4 +1,3 @@
-import { execSync } from "node:child_process";
 import { prisma } from "../db/prisma.js";
 
 // Test database — separate from the dev database.
@@ -13,12 +12,9 @@ process.env.NODE_ENV = "test";
 
 export { TEST_DATABASE_URL };
 
-// Reset the schema ONCE per worker. Spawning the Prisma CLI before every
-// single test was slow enough to blow the 10s hook timeout and made runs flaky.
-execSync(
-  `npx prisma db push --force-reset --skip-generate --accept-data-loss --schema prisma/schema.prisma`,
-  { stdio: "pipe", env: { ...process.env, DATABASE_URL: TEST_DATABASE_URL } }
-);
+// Schema reset happens once in global-setup.ts (before any worker starts).
+// Here we only clear rows between tests — fast and safe under sequential
+// file execution.
 
 beforeEach(async () => {
   // Per-test isolation: fast truncate instead of a CLI spawn. CASCADE wipes

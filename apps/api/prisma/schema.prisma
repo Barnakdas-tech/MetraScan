@@ -86,6 +86,20 @@ model User {
   audits             AuditLog[]
   inspectionsCreated Inspection[] @relation("InspectionCreator")
   declarationsEdited Declaration[] @relation("DeclarationEditor")
+  revokedTokens RevokedToken[]
+}
+
+// Revoked JWT (logout / password change). Rows are pruned lazily after expiry.
+model RevokedToken {
+  id         String   @id @default(uuid())
+  jti        String   @unique
+  userId     String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Inspection {
@@ -234,7 +248,7 @@ model Declaration {
   correctedBy User? @relation("DeclarationEditor", fields: [correctedById], references: [id], onDelete: SetNull)
   results    ValidationResult[]
 
-  @@index([inspectionId, field])
+  @@unique([inspectionId, field])
 }
 
 // ---------------------------------------------------------------------------
@@ -294,6 +308,7 @@ model ValidationResult {
   humanComment   String?
   reviewedById   String?
   reviewedAt     DateTime?
+  supersededById  String?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 

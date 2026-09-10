@@ -29,7 +29,14 @@ export function canAccessInspection(
 }
 
 export async function createInspection(input: CreateInspectionInput, inspectorId: string) {
-  const date = input.inspectionDate ?? new Date();
+  let date = input.inspectionDate ?? new Date();
+  // Clamp to a 7-day window around today: prevents backdating to a laxer rule
+  // regime or future-dating (both distort effective-date resolution).
+  const now = Date.now();
+  const dayMs = 24 * 60 * 60 * 1000;
+  if (Math.abs(date.getTime() - now) > 7 * dayMs) {
+    date = new Date(now);
+  }
   const year = date.getFullYear();
   const data: Prisma.InspectionCreateInput = {
     inspectionNumber: await generateInspectionNumber(year),
