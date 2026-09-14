@@ -4,7 +4,7 @@ AI-assisted Legal Metrology inspection platform for packaged commodities in Indi
 
 **Problem statement:** SIH26034 — Software System to check compliance of Packaged Commodities under the Legal Metrology (Packaged Commodities) Rules, 2011 by scanning products, images, and labels.
 
-**Team:** Quantum Forge · Newton School of Technology, Rishihood University
+**Team:** Newtonix · Newton School of Technology, Rishihood University
 
 MetraScan helps enforcement/inspection users capture package photographs, run image quality checks, extract declarations via OCR, classify the product, determine which legal rules apply, validate against deterministic rule-engine logic, and produce evidence-backed PASS / FAIL / REVIEW / MANUAL_REQUIRED results — always under final human review. The system assists a Legal Metrology Officer; it never replaces one.
 
