@@ -1,0 +1,48 @@
+.git
+.gitignore
+.DS_Store
+**/.DS_Store
+
+# Dependencies
+node_modules
+**/node_modules
+.pnpm-store
+
+# Python environments and caches
+.venv
+**/.venv
+__pycache__
+**/*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+
+# Build outputs
+dist
+**/dist
+build
+
+# Storage and runtime files
+storage
+/data/storage
+*.log
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Testing / QA artifacts / Scratch files
+coverage
+qa-artifacts
+scratch
+scratch*
+**/scratch*
+test-fetch*
+**/test-fetch*
+check-bbox*
+**/check-bbox*
+training_data_exports
+**/training_data_exports
+OLD_*
+**/OLD_*
