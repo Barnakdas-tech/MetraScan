@@ -20,8 +20,7 @@ export function createApp() {
   const app = express();
 
   app.use(helmet());
-  const clientOrigins = env.CLIENT_URL.split(",").map((u) => u.trim().replace(/\/+$/, ""));
-  app.use(cors({ origin: clientOrigins.length === 1 ? clientOrigins[0] : clientOrigins, credentials: true }));
+  app.use(cors({ origin: env.CLIENT_URL, credentials: true }));
   app.use("/api", apiLimiter);
   app.use(express.json({ limit: "2mb" }));
   app.use((err: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
