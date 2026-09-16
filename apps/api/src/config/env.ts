@@ -4,15 +4,22 @@ import path from "node:path";
 import { z } from "zod";
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
+dotenv.config({ path: path.resolve(process.cwd(), "apps/api/.env") });
 
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-  API_PORT: z.coerce.number().default(Number(process.env.PORT) || 4000),
+  API_PORT: z
+    .preprocess((val) => process.env.PORT ?? val, z.coerce.number())
+    .default(4000),
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
   JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
   JWT_EXPIRES_IN: z.string().default("8h"),
-  CLIENT_URL: z.string().url().default("http://localhost:5173"),
-  AI_SERVICE_URL: z.string().url().default("http://localhost:8000"),
+  CLIENT_URL: z.string().default("http://localhost:5173"),
+  AI_SERVICE_URL: z
+    .string()
+    .url()
+    .transform((u) => u.replace(/\/+$/, ""))
+    .default("http://localhost:8000"),
   AI_TIMEOUT_MS: z.coerce.number().default(120000),
   // The shared secret MUST be provided by the environment. A repo-visible
   // default would let anyone who reads the code call the AI service directly.
