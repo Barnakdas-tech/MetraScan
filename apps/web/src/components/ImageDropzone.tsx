@@ -48,7 +48,7 @@ export default function ImageDropzone({ onFiles, disabled }: ImageDropzoneProps)
             accept={ACCEPT}
             multiple
             disabled={disabled}
-            className="sr-only"
+            className="hidden"
             onChange={e => {
               handleFiles(e.target.files);
               e.target.value = "";
