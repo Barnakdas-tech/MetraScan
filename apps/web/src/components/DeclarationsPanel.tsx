@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useAuth } from "../auth/AuthContext";
 import Badge from "./ui/Badge";
 import Button from "./ui/Button";
 import Modal from "./ui/Modal";
@@ -14,6 +15,8 @@ const FIELD_LABELS: Record<string, string> = {
   packerAddress: "Packer address",
   importerName: "Importer name",
   importerAddress: "Importer address",
+  marketerName: "Marketer name",
+  marketerAddress: "Marketer address",
   countryOfOrigin: "Country of origin",
   genericName: "Generic name",
   netQuantity: "Net quantity",
@@ -59,7 +62,10 @@ export default function DeclarationsPanel({
   images?: InspectionImage[];
   onChanged: () => void;
 }) {
+  const { user } = useAuth();
   const [editing, setEditing] = useState<Declaration | null>(null);
+
+
   const [viewingEvidence, setViewingEvidence] = useState<Declaration | null>(null);
   const [value, setValue] = useState("");
   const [note, setNote] = useState("");
@@ -134,6 +140,38 @@ export default function DeclarationsPanel({
                   <div className="mt-0.5 max-w-xs truncate text-xs text-slate-400" title={d.rawText}>
                     “{d.rawText}”
                   </div>
+                  {d.conflicts && d.conflicts.length > 0 && !d.correctedValue && (
+                    <div className="mt-1.5 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+                      <div className="flex items-center gap-1 font-semibold">
+                        <Badge tone="warning">Conflict across images</Badge>
+                      </div>
+                      <div className="mt-1 space-y-1">
+                        {d.conflicts.map((c, idx) => {
+                          const cImg = images.find(img => img.id === c.imageId);
+                          return (
+                            <div key={idx} className="flex items-center justify-between gap-1 text-[11px] text-amber-800">
+                              <span>
+                                {cImg ? `Image #${cImg.sequence}` : "Other image"}: “{c.rawText}”
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setViewingEvidence({
+                                  ...d,
+                                  imageId: c.imageId,
+                                  bbox: c.bbox,
+                                  rawText: c.rawText,
+                                  confidence: c.confidence,
+                                })}
+                                className="font-medium text-brand hover:underline"
+                              >
+                                View
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </td>
                 <td className="px-3 py-2.5">
                   <Badge tone={confTone(d.confidence)}>
@@ -160,10 +198,13 @@ export default function DeclarationsPanel({
                   )}
                 </td>
                 <td className="px-3 py-2.5 text-right">
-                  <Button variant="ghost" size="sm" onClick={() => setEditing(d)}>
-                    {d.correctedValue !== null ? "Edit correction" : "Correct"}
-                  </Button>
+                  {user?.role !== "VIEWER" && (
+                    <Button variant="ghost" size="sm" onClick={() => setEditing(d)}>
+                      {d.correctedValue !== null ? "Edit correction" : "Correct"}
+                    </Button>
+                  )}
                 </td>
+
               </tr>
             ))}
           </tbody>

@@ -26,6 +26,7 @@ import {
   validateUnitSalePrice,
 } from "./validators/specialValidators.js";
 import { validateWholesaleDeclarations } from "./validators/wholesaleValidator.js";
+import { routeOutcome } from "./routing.js";
 
 /**
  * THE DETERMINISTIC COMPLIANCE ENGINE.
@@ -45,7 +46,7 @@ export function evaluateCompliance(
 
   const outcomes: ValidationOutcome[] = [];
 
-  const add = (outcome: ValidationOutcome) => outcomes.push(outcome);
+  const add = (outcome: ValidationOutcome) => outcomes.push(routeOutcome(outcome));
 
   // Rule 24 — wholesale packages have their own Chapter III declaration set:
   // manufacturer/importer/packer identity + address, commodity identity, and

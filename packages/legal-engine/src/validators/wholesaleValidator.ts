@@ -124,7 +124,7 @@ function checkWholesaleParty(declarations: DeclarationEvidence[], visual: Visual
   return {
     ruleId: "R24",
     status: "PASS",
-    confidence: Math.min(0.92, ((name!.confidence ?? 0.8) + (address!.confidence ?? 0.7)) / 2),
+    confidence: Math.min(0.92, name!.confidence ?? 0.8, address!.confidence ?? 0.7),
     reason: "Manufacturer/importer/packer name and address detected per Rule 24(a).",
     evidence: { imageId: name!.imageId, bbox: name!.bbox, text: name!.rawText },
     inputs: { nameFound: true, addressFound: true },
@@ -161,7 +161,7 @@ function missingOutcome(ruleId: string, fieldName: string, humanName: string, vi
   return {
     ruleId,
     status: "FAIL",
-    confidence: 0.8,
+    confidence: 0.95,
     reason: `A required wholesale declaration (${humanName}) is not detected across analyzed package images despite sufficient image quality for detection.`,
     evidence: { imageId: null, bbox: null, text: null },
     inputs: { field: fieldName, imagesSearched: visual.imageCount },

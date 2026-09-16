@@ -167,3 +167,88 @@ export async function getReviewHistory(inspectionId: string, user: { sub: string
 
   return { inspectionId, reviews, auditLogs };
 }
+
+export async function getReviewQueue(user: { sub: string; role: string }) {
+  if (user.role !== "REVIEWER" && user.role !== "ADMIN") {
+    throw ApiError.forbidden("Only REVIEWER or ADMIN roles can access the review queue");
+  }
+
+  const candidates = await prisma.inspection.findMany({
+    where: {
+      OR: [
+        { status: "UNDER_REVIEW" },
+        { overallResult: "REVIEW" },
+        {
+          results: {
+            some: {
+              status: { in: ["REVIEW", "MANUAL_REQUIRED"] },
+              humanStatus: null,
+              supersededById: null,
+            },
+          },
+        },
+      ],
+    },
+    orderBy: { createdAt: "desc" },
+    include: {
+      product: { select: { id: true, name: true, brand: true, category: true } },
+      inspector: { select: { id: true, name: true, email: true } },
+      declarations: {
+        select: {
+          id: true,
+          field: true,
+          conflicts: true,
+          correctedValue: true,
+        },
+      },
+      results: {
+        where: { supersededById: null },
+        select: {
+          id: true,
+          ruleId: true,
+          status: true,
+          humanStatus: true,
+          reason: true,
+          confidence: true,
+        },
+      },
+      reviews: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { decision: true, notes: true, createdAt: true },
+      },
+    },
+  });
+
+  return candidates.map(insp => {
+    const pendingResults = insp.results.filter(
+      r => (r.status === "REVIEW" || r.status === "MANUAL_REQUIRED" || (insp.status === "UNDER_REVIEW" && r.status === "FAIL")) && !r.humanStatus
+    );
+    const hasConflicts = insp.declarations.some(
+      d => !d.correctedValue && d.conflicts && Array.isArray(d.conflicts) && (d.conflicts as unknown[]).length > 0
+    );
+    const pendingRules = Array.from(new Set(pendingResults.map(r => r.ruleId)));
+    const reasons = Array.from(new Set(pendingResults.map(r => r.reason).filter(Boolean)));
+
+    return {
+      id: insp.id,
+      inspectionNumber: insp.inspectionNumber,
+      status: insp.status,
+      overallResult: insp.overallResult,
+      packageType: insp.packageType,
+      intendedConsumer: insp.intendedConsumer,
+      location: insp.location,
+      notes: insp.notes,
+      inspectionDate: insp.inspectionDate,
+      createdAt: insp.createdAt,
+      product: insp.product,
+      inspector: insp.inspector,
+      pendingCount: pendingResults.length,
+      pendingRules,
+      reasons,
+      hasConflicts,
+      lastReviewAction: insp.reviews[0] ?? null,
+    };
+  });
+}
+

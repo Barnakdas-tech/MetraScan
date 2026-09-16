@@ -191,6 +191,78 @@ describe("Phase 6 - manufacturer details validator", () => {
     expect(r.status).toBe("REVIEW");
     expect(r.reason).toMatch(/complete address/i);
   });
+
+  it("routes marketerName + marketerAddress to REVIEW under Rule 6(1)(a) Explanation II (deemed manufacturer)", () => {
+    const d = [
+      decl("marketerName", { rawText: "MARKETED BY: PepsiCo India Holdings Pvt. Ltd.", normalizedValue: "PepsiCo India Holdings Pvt. Ltd." }),
+      decl("marketerAddress", { rawText: "P.O.BOX-27, DLF QUTAB ENCLAVE, PHASE-1, GURUGRAM - 122002, HARYANA, INDIA.", normalizedValue: "P.O.BOX-27, DLF QUTAB ENCLAVE, PHASE-1, GURUGRAM - 122002, HARYANA, INDIA." }),
+    ];
+    const r = validateManufacturerDetails(d, goodVisual(), false);
+    expect(r.status).toBe("REVIEW");
+    expect(r.ruleId).toBe("R6.1a");
+    expect(r.reason).toMatch(/Rule 6\(1\)\(a\) Explanation II/i);
+    expect(r.reason).toMatch(/manual verification/i);
+    expect(r.source).toContain("Explanation II");
+    expect(r.inputs?.marketerName).toBe("PepsiCo India Holdings Pvt. Ltd.");
+    expect(r.inputs?.marketerAddress).toContain("GURUGRAM");
+  });
+
+  it("routes marketerName without marketerAddress to REVIEW under Rule 6(1)(a) Explanation II", () => {
+    const d = [
+      decl("marketerName", { rawText: "MARKETED BY: PepsiCo India Holdings Pvt. Ltd.", normalizedValue: "PepsiCo India Holdings Pvt. Ltd." }),
+    ];
+    const r = validateManufacturerDetails(d, goodVisual(), false);
+    expect(r.status).toBe("REVIEW");
+    expect(r.reason).toMatch(/marketer address is missing/i);
+  });
+
+  it("gives explicit manufacturerName priority and PASSes even if marketer is present", () => {
+    const d = [
+      decl("manufacturerName", { rawText: "Manufactured by: Tasty Bites Foods Ltd.", normalizedValue: "Tasty Bites Foods Ltd." }),
+      decl("manufacturerAddress", { rawText: "Survey No. 45, Pune, Maharashtra 411001", normalizedValue: "Survey No. 45, Pune, Maharashtra 411001" }),
+      decl("marketerName", { rawText: "MARKETED BY: PepsiCo India Holdings Pvt. Ltd.", normalizedValue: "PepsiCo India Holdings Pvt. Ltd." }),
+    ];
+    const r = validateManufacturerDetails(d, goodVisual(), false);
+    expect(r.status).toBe("PASS");
+    expect(r.inputs?.name).toBe("Tasty Bites Foods Ltd.");
+    expect(r.inputs?.addressFound).toBe(true);
+  });
+
+  it("routes conflicting marketerName across images to REVIEW under Rule 6(1)(a) Explanation II", () => {
+    const d = [
+      decl("marketerName", {
+        rawText: "MARKETED BY: PepsiCo India Holdings Pvt. Ltd.",
+        normalizedValue: "PepsiCo India Holdings Pvt. Ltd.",
+        conflicts: [{ field: "marketerName", rawText: "Marketed by: Britannia Industries Ltd.", normalizedValue: "Britannia Industries Ltd.", confidence: 0.9, imageId: "img-2", bbox: null }],
+      }),
+      decl("marketerAddress", {
+        rawText: "DLF Phase-1, Gurugram 122002",
+        normalizedValue: "DLF Phase-1, Gurugram 122002",
+      }),
+    ];
+    const r = validateManufacturerDetails(d, goodVisual(), false);
+    expect(r.status).toBe("REVIEW");
+    expect(r.reason).toMatch(/Conflicting marketer\/brand-owner name/i);
+    expect(r.evidence?.conflict).toBeDefined();
+  });
+
+  it("routes conflicting marketerAddress across images to REVIEW under Rule 6(1)(a) Explanation II", () => {
+    const d = [
+      decl("marketerName", {
+        rawText: "MARKETED BY: PepsiCo India Holdings Pvt. Ltd.",
+        normalizedValue: "PepsiCo India Holdings Pvt. Ltd.",
+      }),
+      decl("marketerAddress", {
+        rawText: "DLF Phase-1, Gurugram 122002",
+        normalizedValue: "DLF Phase-1, Gurugram 122002",
+        conflicts: [{ field: "marketerAddress", rawText: "MG Road, Bengaluru 560001", normalizedValue: "MG Road, Bengaluru 560001", confidence: 0.9, imageId: "img-2", bbox: null }],
+      }),
+    ];
+    const r = validateManufacturerDetails(d, goodVisual(), false);
+    expect(r.status).toBe("REVIEW");
+    expect(r.reason).toMatch(/Conflicting marketer\/brand-owner address/i);
+    expect(r.evidence?.conflict).toBeDefined();
+  });
 });
 
 describe("Phase 6 - Rule 7 numeral size honesty", () => {

@@ -21,6 +21,9 @@ import RuleDetailPage from "./pages/app/RuleDetailPage";
 import AnalyticsPage from "./pages/app/AnalyticsPage";
 import RepositoryPage from "./pages/app/RepositoryPage";
 import SettingsPage from "./pages/app/SettingsPage";
+import ReviewQueuePage from "./pages/app/ReviewQueuePage";
+import UsersPage from "./pages/app/UsersPage";
+import AuditLogPage from "./pages/app/AuditLogPage";
 import AppRedirect from "./pages/AppRedirect";
 
 export default function App() {
@@ -34,6 +37,7 @@ export default function App() {
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="inspection/new" element={<RequireRole roles={["ADMIN", "INSPECTOR"]}><NewInspectionPage /></RequireRole>} />
         <Route path="inspection/:inspectionId" element={<InspectionDetailPage />} />
+        <Route path="review-queue" element={<RequireRole roles={["ADMIN", "REVIEWER"]}><ReviewQueuePage /></RequireRole>} />
         <Route path="scan" element={<RequireRole roles={["ADMIN", "INSPECTOR"]}><ScanPage /></RequireRole>} />
         <Route path="inspections" element={<InspectionsPage />} />
         <Route path="inspections/:inspectionId" element={<InspectionHistoryDetailPage />} />
@@ -45,6 +49,8 @@ export default function App() {
         <Route path="reports/:reportId" element={<ReportDetailPage />} />
         <Route path="rules" element={<RulesPage />} />
         <Route path="rules/:ruleId" element={<RuleDetailPage />} />
+        <Route path="users" element={<RequireRole roles={["ADMIN"]}><UsersPage /></RequireRole>} />
+        <Route path="audit-log" element={<RequireRole roles={["ADMIN"]}><AuditLogPage /></RequireRole>} />
         <Route path="analytics" element={<AnalyticsPage />} />
         <Route path="repository" element={<RepositoryPage />} />
         <Route path="settings" element={<SettingsPage />} />
@@ -53,3 +59,4 @@ export default function App() {
     </Routes>
   );
 }
+

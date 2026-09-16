@@ -63,14 +63,61 @@ export async function runCompliance(inspectionId: string, user: { sub: string; r
     confidence: d.extractionConfidence,
     imageId: d.imageId,
     bbox: (d.bbox as number[]) ?? null,
+    conflicts: (d.conflicts as any) ?? null,
   }));
 
   const result = evaluateCompliance(applicabilityInput, declarationEvidence, visual);
 
-  // --- ACTIVE LEARNING / CONFIDENCE GATE ---
-  // The legal engine evaluates compliance assuming the extracted text is true.
-  // We apply an active learning safety net: if the AI was uncertain about an extraction (< 0.7),
-  // we do not automatically accept a PASS. We route it to a human.
+  // --- CROSS-IMAGE CONFLICT & ACTIVE LEARNING SAFETY GATE ---
+  // 1. Cross-image conflicts: if AI detected conflicting declarations across images
+  // (and the inspector hasn't manually corrected the field), route to REVIEW.
+  for (const outcome of result.results) {
+    // Check if any declaration related to this outcome has unresolved cross-image conflicts
+    const conflictingDecl = declarations.find(d => {
+      const hasConflicts = !d.correctedValue && d.conflicts && Array.isArray(d.conflicts) && d.conflicts.length > 0;
+      if (!hasConflicts) return false;
+      if (d.field === outcome.inputs?.field) return true;
+      if (d.rawText === outcome.evidence?.text) return true;
+      if (d.field === "mrp" && outcome.ruleId === "R6.1e") return true;
+      if (d.field === "netQuantity" && outcome.ruleId === "R6.1c") return true;
+      if ((d.field === "manufacturerName" || d.field === "manufacturerAddress" || d.field === "marketerName" || d.field === "marketerAddress") && outcome.ruleId === "R6.1a") return true;
+      if (d.field === "genericName" && outcome.ruleId === "R6.1b") return true;
+      if ((d.field === "manufactureDate" || d.field === "packingDate") && outcome.ruleId === "R6.1d") return true;
+      if ((d.field === "consumerCarePhone" || d.field === "consumerCareEmail") && outcome.ruleId === "R6.2") return true;
+      return false;
+    });
+
+    if (conflictingDecl && outcome.status === "PASS") {
+      outcome.status = "REVIEW";
+      outcome.confidence = 0.5;
+      const conflictsList = (conflictingDecl.conflicts as any[]) || [];
+      const conflictSnippet = conflictsList.map(c => `"${c.rawText}" (${c.normalizedValue ?? "unparsed"})`).join(", ");
+      outcome.reason = `Conflicting ${conflictingDecl.field} declarations detected across package images: "${conflictingDecl.rawText}" vs ${conflictSnippet}. Manual verification required.`;
+      outcome.source = (outcome.source || "") + " + Cross-Image Conflict Gate";
+      outcome.evidence = {
+        imageId: conflictingDecl.imageId,
+        bbox: (conflictingDecl.bbox as number[]) ?? null,
+        text: conflictingDecl.rawText,
+        conflict: {
+          field: conflictingDecl.field,
+          primary: {
+            imageId: conflictingDecl.imageId,
+            text: conflictingDecl.rawText,
+            value: conflictingDecl.normalizedValue,
+            bbox: (conflictingDecl.bbox as number[]) ?? null,
+          },
+          conflicting: conflictsList.map(c => ({
+            imageId: c.imageId,
+            text: c.rawText,
+            value: c.normalizedValue,
+            bbox: c.bbox ?? null,
+          })),
+        },
+      };
+    }
+  }
+
+  // 2. Active Learning gate: if the AI was uncertain (< 0.7), route to REVIEW
   for (const outcome of result.results) {
     if (outcome.status === "PASS" && outcome.evidence) {
       // Find the declaration that matched this evidence

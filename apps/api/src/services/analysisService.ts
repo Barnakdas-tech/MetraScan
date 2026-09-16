@@ -3,6 +3,7 @@ import { storage } from "./storageService.js";
 import { analyzeQuality, runOcr, checkHealth } from "./aiServiceClient.js";
 import { canAccessInspection } from "./inspectionService.js";
 import { ApiError } from "../utils/apiError.js";
+import { audit } from "./auditService.js";
 import type { OcrRegionItem } from "./aiServiceClient.js";
 
 /**
@@ -116,6 +117,18 @@ export async function analyzeInspection(inspectionId: string, user: { sub: strin
     where: { id: inspectionId },
     data: { status: anyProcessed ? "COMPLETED" : "PROCESSING" },
   });
+
+  await audit(
+    user ? { id: user.sub, role: user.role as never } : null,
+    "ANALYSIS_COMPLETED",
+    "Inspection",
+    inspectionId,
+    {
+      processed: results.filter(r => r.status === "PROCESSED").length,
+      failed: results.filter(r => r.status === "FAILED").length,
+    }
+  );
+
 
   return {
     inspectionId,

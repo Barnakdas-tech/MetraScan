@@ -3,6 +3,7 @@ import { prisma } from "../db/prisma.js";
 import { ApiError } from "../utils/apiError.js";
 import type { CreateInspectionInput } from "../validators/inspectionSchemas.js";
 import { generateInspectionNumber } from "./inspectionNumberService.js";
+import { audit } from "./auditService.js";
 
 export interface InspectionAccess {
   canView: boolean;
@@ -62,8 +63,58 @@ export async function createInspection(input: CreateInspectionInput, inspectorId
     };
   }
 
-  return prisma.inspection.create({ data, include: { product: true, inspector: { select: { id: true, name: true } } } });
+  const created = await prisma.inspection.create({ data, include: { product: true, inspector: { select: { id: true, name: true } } } });
+  await audit(
+    { id: inspectorId, role: "INSPECTOR" as never },
+    "INSPECTION_CREATED",
+    "Inspection",
+    created.id,
+    { inspectionNumber: created.inspectionNumber, packageType: created.packageType }
+  );
+  return created;
 }
+
+export async function submitInspectionForReview(
+  inspectionId: string,
+  user: { sub: string; role: string },
+  comment?: string | null
+) {
+  const inspection = await prisma.inspection.findUnique({ where: { id: inspectionId } });
+  if (!inspection) throw ApiError.notFound("Inspection not found");
+
+  if (user.role === "VIEWER") {
+    throw ApiError.forbidden("VIEWER role cannot submit inspections for review");
+  }
+  if (user.role === "INSPECTOR" && inspection.inspectorId !== user.sub) {
+    throw ApiError.forbidden("Inspectors can only submit their own inspections for review");
+  }
+
+  const updated = await prisma.inspection.update({
+    where: { id: inspectionId },
+    data: { status: "UNDER_REVIEW" },
+    include: { product: true, inspector: { select: { id: true, name: true } } },
+  });
+
+  await prisma.review.create({
+    data: {
+      inspectionId,
+      reviewerId: user.sub,
+      decision: "SUBMIT_FOR_REVIEW",
+      notes: comment ?? "Submitted for human review",
+    },
+  });
+
+  await audit(
+    { id: user.sub, role: user.role as never },
+    "SUBMITTED_FOR_REVIEW",
+    "Inspection",
+    inspectionId,
+    { comment: comment ?? null }
+  );
+
+  return updated;
+}
+
 
 export async function listInspections(user: { sub: string; role: string }) {
   const where =

@@ -240,6 +240,7 @@ model Declaration {
   detectionMethod      String?
   bbox                 Json?
   ocrRegionIds         Json?
+  conflicts            Json?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 

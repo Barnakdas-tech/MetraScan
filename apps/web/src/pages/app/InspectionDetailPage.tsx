@@ -17,11 +17,12 @@ import { getInspection, listImages, uploadImages, deleteImage, reorderImages, an
 import { getErrorMessage, downloadAuthenticatedFile } from "../../lib/api";
 import type { Inspection, InspectionImage } from "../../types/inspection";
 import type { AnalysisResult } from "../../types/analysis";
+import { useAuth } from "../../auth/AuthContext";
 import type { DeclarationsResponse } from "../../types/declarations";
 import type { ApplicabilityResult } from "../../types/applicability";
 import type { ComplianceResult } from "../../types/compliance";
 import type { ReviewHistory } from "../../types/review";
-import { extractDeclarations, getDeclarations, getApplicability, runCompliance, getReviewHistory, getCompliance, generateReport } from "../../lib/inspectionApi";
+import { extractDeclarations, getDeclarations, getApplicability, runCompliance, getReviewHistory, getCompliance, generateReport, submitForReview } from "../../lib/inspectionApi";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return bytes + " B";
@@ -53,8 +54,11 @@ export default function InspectionDetailPage() {
   const [complianceError, setComplianceError] = useState<string | null>(null);
   const [generatingReport, setGeneratingReport] = useState(false);
   const [reportReady, setReportReady] = useState<{ id: string } | null>(null);
+  const { user } = useAuth();
+  const [submittingForReview, setSubmittingForReview] = useState(false);
   const [reviewHistory, setReviewHistory] = useState<ReviewHistory | null>(null);
   const [storedResults, setStoredResults] = useState<import("../../types/review").StoredValidationResult[]>([]);
+
 
   const applyComplianceData = (complianceData: any) => {
     if (complianceData && complianceData.results) setStoredResults(complianceData.results);
@@ -239,9 +243,33 @@ export default function InspectionDetailPage() {
     );
   };
 
+  const handleSubmitForReview = async () => {
+    if (!inspectionId) return;
+    setSubmittingForReview(true);
+    try {
+      await submitForReview(inspectionId, "Inspection submitted for review");
+      const fresh = await getInspection(inspectionId);
+      setInspection(fresh);
+      const revHist = await getReviewHistory(inspectionId);
+      setReviewHistory(revHist);
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setSubmittingForReview(false);
+    }
+  };
+
   if (loading && !inspection) return <LoadingState label="Loading inspection..." />;
   if (error && !inspection) return <ErrorState message={error} retry={load} />;
   if (!inspection) return null;
+
+  const isViewer = user?.role === "VIEWER";
+  const needsReview =
+    inspection.status !== "UNDER_REVIEW" &&
+    (inspection.overallResult === "REVIEW" ||
+      storedResults.some(
+        r => (r.status === "REVIEW" || r.status === "MANUAL_REQUIRED") && !r.humanStatus
+      ));
 
   return (
     <div>
@@ -251,12 +279,20 @@ export default function InspectionDetailPage() {
         actions={
           <div className="flex items-center gap-2">
             {inspection.isDemo && <Badge tone="warning">DEMO DATA</Badge>}
-            <Badge tone="info">{inspection.status}</Badge>
+            <Badge tone={inspection.status === "UNDER_REVIEW" ? "warning" : "info"}>{inspection.status}</Badge>
+            {needsReview && (user?.role === "ADMIN" || user?.role === "INSPECTOR") && (
+              <Button
+                onClick={handleSubmitForReview}
+                isLoading={submittingForReview}
+              >
+                Submit for Review
+              </Button>
+            )}
             <Button
               variant="secondary"
               onClick={handleGenerateReport}
               isLoading={generatingReport}
-              disabled={!compliance || inspection.status !== "COMPLETED"}
+              disabled={!compliance || (inspection.status !== "COMPLETED" && inspection.status !== "UNDER_REVIEW")}
             >
               Generate Report
             </Button>
@@ -266,6 +302,7 @@ export default function InspectionDetailPage() {
           </div>
         }
       />
+
 
       <div className="mx-auto mt-6 max-w-7xl px-4 pb-12 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">

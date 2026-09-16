@@ -80,6 +80,20 @@ export interface ApplicabilityResult {
   note: string;
 }
 
+/** Candidate observation that conflicts with the primary declaration. */
+export interface DeclarationConflictCandidate {
+  imageId: string;
+  field: string;
+  rawText: string;
+  normalizedValue: string | null;
+  unit?: string | null;
+  currency?: string | null;
+  confidence: number | null;
+  ocrConfidence?: number | null;
+  bbox: number[] | null;
+  ocrRegionIds?: string[] | null;
+}
+
 /** A structured declaration (Phase 4 output) as consumed by validators. */
 export interface DeclarationEvidence {
   field: string;
@@ -91,6 +105,7 @@ export interface DeclarationEvidence {
   confidence: number | null;
   imageId: string | null;
   bbox: number[] | null;
+  conflicts?: DeclarationConflictCandidate[] | null;
 }
 
 /** Aggregated evidence about what the images actually showed. */
@@ -114,6 +129,11 @@ export interface ValidationOutcome {
     imageId: string | null;
     bbox: number[] | null;
     text: string | null;
+    conflict?: {
+      field: string;
+      primary: { imageId: string | null; text: string | null; value?: string | null; bbox?: number[] | null };
+      conflicting: Array<{ imageId: string; text: string; value?: string | null; bbox?: number[] | null }>;
+    } | null;
   } | null;
   inputs: Record<string, unknown>;
   validatorVersion: string;

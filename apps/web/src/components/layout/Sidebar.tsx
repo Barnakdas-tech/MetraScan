@@ -11,56 +11,123 @@ interface NavSection {
   items: NavItem[];
 }
 
-const SECTIONS: NavSection[] = [
-  {
-    title: "Overview",
-    items: [{ to: "/app/dashboard", label: "Dashboard" }],
-  },
-  {
-    title: "Inspections",
-    items: [
-      { to: "/app/inspection/new", label: "New Inspection" },
-      { to: "/app/inspections", label: "Inspection History" },
-    ],
-  },
-  {
-    title: "Products",
-    items: [
-      { to: "/app/products", label: "Products" },
-      { to: "/app/repository", label: "Product Repository" },
-    ],
-  },
-  {
-    title: "Compliance",
-    items: [
-      { to: "/app/violations", label: "Violations" },
-      { to: "/app/rules", label: "Rules" },
-    ],
-  },
-  {
-    title: "Reports",
-    items: [{ to: "/app/reports", label: "Reports" }],
-  },
-  {
-    title: "Analytics",
-    items: [{ to: "/app/analytics", label: "Analytics" }],
-  },
-  {
-    title: "System",
-    items: [{ to: "/app/settings", label: "Settings" }],
-  },
-];
+function getSectionsForRole(role?: string): NavSection[] {
+  if (role === "INSPECTOR") {
+    return [
+      {
+        title: "Overview",
+        items: [{ to: "/app/dashboard", label: "Dashboard" }],
+      },
+      {
+        title: "Inspections",
+        items: [
+          { to: "/app/inspection/new", label: "New Inspection" },
+          { to: "/app/inspections", label: "My Inspections" },
+        ],
+      },
+      {
+        title: "Reports",
+        items: [{ to: "/app/reports", label: "Reports" }],
+      },
+      {
+        title: "Reference",
+        items: [
+          { to: "/app/rules", label: "Rules" },
+          { to: "/app/settings", label: "Settings" },
+        ],
+      },
+    ];
+  }
+
+  if (role === "REVIEWER") {
+    return [
+      {
+        title: "Overview",
+        items: [{ to: "/app/dashboard", label: "Dashboard" }],
+      },
+      {
+        title: "Review",
+        items: [{ to: "/app/review-queue", label: "Review Queue" }],
+      },
+      {
+        title: "Inspections",
+        items: [{ to: "/app/inspections", label: "Inspections" }],
+      },
+      {
+        title: "Reports",
+        items: [{ to: "/app/reports", label: "Reports" }],
+      },
+      {
+        title: "Reference",
+        items: [
+          { to: "/app/rules", label: "Rules" },
+          { to: "/app/settings", label: "Settings" },
+        ],
+      },
+    ];
+  }
+
+  if (role === "ADMIN") {
+    return [
+      {
+        title: "Overview",
+        items: [{ to: "/app/dashboard", label: "Dashboard" }],
+      },
+      {
+        title: "Inspections",
+        items: [
+          { to: "/app/inspections", label: "All Inspections" },
+          { to: "/app/review-queue", label: "Review Queue" },
+          { to: "/app/inspection/new", label: "New Inspection" },
+        ],
+      },
+      {
+        title: "Administration",
+        items: [
+          { to: "/app/users", label: "Users" },
+          { to: "/app/reports", label: "Reports" },
+          { to: "/app/audit-log", label: "Audit Log" },
+          { to: "/app/analytics", label: "Analytics" },
+        ],
+      },
+      {
+        title: "Reference",
+        items: [
+          { to: "/app/rules", label: "Rules" },
+          { to: "/app/settings", label: "Settings" },
+        ],
+      },
+    ];
+  }
+
+  // VIEWER default / read-only
+  return [
+    {
+      title: "Overview",
+      items: [{ to: "/app/dashboard", label: "Dashboard" }],
+    },
+    {
+      title: "Inspections",
+      items: [{ to: "/app/inspections", label: "Inspections" }],
+    },
+    {
+      title: "Reports",
+      items: [{ to: "/app/reports", label: "Reports" }],
+    },
+    {
+      title: "Reference",
+      items: [
+        { to: "/app/rules", label: "Rules" },
+        { to: "/app/settings", label: "Settings" },
+      ],
+    },
+  ];
+}
 
 export default function Sidebar() {
   const { user } = useAuth();
-  const canInspect = user?.role === "ADMIN" || user?.role === "INSPECTOR";
-  const sections = SECTIONS.map(section => ({
-    ...section,
-    items: section.items.filter(item => {
-      if (item.to.startsWith("/app/inspection/new") || item.to === "/app/scan") return canInspect;
-      return true;
-    }),
-  })).filter(section => section.items.length > 0);
+  const sections = getSectionsForRole(user?.role);
+
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-surface-border bg-white">
       <div className="flex h-16 items-center gap-2 border-b border-surface-border px-5">

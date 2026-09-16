@@ -44,10 +44,41 @@ export function validateNetQuantity(
     return {
       ruleId: "R6.1c",
       status: "FAIL",
-      confidence: 0.85,
+      confidence: 0.95,
       reason: "No net quantity declaration detected across analyzed package images despite sufficient image quality for detection.",
       evidence: { imageId: null, bbox: null, text: null },
       inputs: { declarationFound: false, imagesSearched: visual.imageCount },
+      validatorVersion: VERSION,
+      source: SOURCE,
+    };
+  }
+
+  // Check for unresolved cross-image conflict
+  if (!netQty.correctedValue && netQty.conflicts && netQty.conflicts.length > 0) {
+    const conflicting = netQty.conflicts[0];
+    const primaryStr = `${netQty.normalizedValue ?? ""} ${netQty.unit ?? ""}`.trim();
+    const conflictStr = `${conflicting.normalizedValue ?? ""} ${conflicting.unit ?? ""}`.trim();
+    return {
+      ruleId: "R6.1c",
+      status: "REVIEW",
+      confidence: 0.5,
+      reason: `Conflicting net quantity declarations detected across package images: "${netQty.rawText}" (${primaryStr}) vs "${conflicting.rawText}" (${conflictStr}). Manual verification required.`,
+      evidence: {
+        imageId: netQty.imageId,
+        bbox: netQty.bbox,
+        text: netQty.rawText,
+        conflict: {
+          field: "netQuantity",
+          primary: { imageId: netQty.imageId, text: netQty.rawText, value: primaryStr, bbox: netQty.bbox },
+          conflicting: netQty.conflicts.map(c => ({
+            imageId: c.imageId,
+            text: c.rawText,
+            value: `${c.normalizedValue ?? ""} ${c.unit ?? ""}`.trim(),
+            bbox: c.bbox,
+          })),
+        },
+      },
+      inputs: { primaryValue: primaryStr, conflicts: netQty.conflicts.map(c => `${c.normalizedValue ?? ""} ${c.unit ?? ""}`.trim()) },
       validatorVersion: VERSION,
       source: SOURCE,
     };
@@ -131,7 +162,7 @@ export function validateNetQuantity(
   return {
     ruleId: "R6.1c",
     status: "PASS",
-    confidence: Math.min(0.97, (netQty.confidence ?? 0.8) * 0.97),
+    confidence: Math.min(0.95, netQty.confidence ?? 0.8),
     reason: `Net quantity declared as ${value} ${netQty.unit} with a valid SI unit appropriate to the quantity range.`,
     evidence: { imageId: netQty.imageId, bbox: netQty.bbox, text: netQty.rawText },
     inputs: { value, unit },

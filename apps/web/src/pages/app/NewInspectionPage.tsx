@@ -8,10 +8,18 @@ import Select from "../../components/ui/Select";
 import { createInspection } from "../../lib/inspectionApi";
 import { getErrorMessage } from "../../lib/api";
 
+function getLocalTodayDateString(): string {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export default function NewInspectionPage() {
   const navigate = useNavigate();
   const [form, setForm] = useState({
-    inspectionDate: new Date().toISOString().slice(0, 10),
+    inspectionDate: getLocalTodayDateString(),
     location: "",
     notes: "",
     packageType: "RETAIL",
@@ -32,7 +40,7 @@ export default function NewInspectionPage() {
       const inspection = await createInspection({
         packageType: form.packageType as "RETAIL" | "WHOLESALE" | "IMPORTED" | "UNKNOWN",
         intendedConsumer: form.intendedConsumer,
-        inspectionDate: new Date(form.inspectionDate + "T00:00:00").toISOString(),
+        inspectionDate: new Date(form.inspectionDate + "T12:00:00Z").toISOString(),
         location: form.location || undefined,
         notes: form.notes || undefined,
         product: form.productName.trim()

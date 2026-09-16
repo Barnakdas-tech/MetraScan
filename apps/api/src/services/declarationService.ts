@@ -2,6 +2,7 @@ import { prisma } from "../db/prisma.js";
 import { ApiError } from "../utils/apiError.js";
 import { canAccessInspection } from "./inspectionService.js";
 import { extractDeclarations } from "../extractors/fieldExtractors.js";
+import { resolveFieldConflicts } from "../extractors/conflictDetector.js";
 import { classifyProduct } from "../extractors/productClassifier.js";
 import { audit } from "./auditService.js";
 import type { FieldCandidate } from "../extractors/types.js";
@@ -44,18 +45,15 @@ export async function extractAndStoreDeclarations(inspectionId: string, user: { 
     for (const c of candidates) allCandidates.push({ ...c, imageId: image.id });
   }
 
-  // Deduplicate across images per field (keep highest confidence, prefer earlier image)
-  const byField = new Map<string, FieldCandidate & { imageId: string }>();
-  for (const c of allCandidates) {
-    const existing = byField.get(c.field);
-    if (!existing || c.confidence > existing.confidence) byField.set(c.field, c);
-  }
+  // Resolve candidates across images per field: select highest-confidence primary
+  // while preserving any conflicting observations from other images.
+  const resolved = resolveFieldConflicts(allCandidates);
 
   // Preserve human corrections across re-extraction: upsert by (inspectionId, field).
   // The AI re-detection updates raw evidence; correctedValue/correctionNote/
   // correctedById survive untouched on the existing row.
   const created = await Promise.all(
-    Array.from(byField.values()).map(c =>
+    Array.from(resolved.values()).map(({ primary: c, conflicts }) =>
       prisma.declaration.upsert({
         where: { inspectionId_field: { inspectionId, field: c.field } },
         create: {
@@ -71,6 +69,7 @@ export async function extractAndStoreDeclarations(inspectionId: string, user: { 
           detectionMethod: c.detectionMethod,
           bbox: c.bbox as never,
           ocrRegionIds: c.ocrRegionIds as never,
+          conflicts: conflicts.length > 0 ? (conflicts as never) : undefined,
         },
         update: {
           imageId: c.imageId,
@@ -83,6 +82,7 @@ export async function extractAndStoreDeclarations(inspectionId: string, user: { 
           detectionMethod: c.detectionMethod,
           bbox: c.bbox as never,
           ocrRegionIds: c.ocrRegionIds as never,
+          conflicts: conflicts.length > 0 ? (conflicts as never) : undefined,
           // correctedValue / correctionNote / correctedById intentionally preserved
         },
       })
@@ -127,6 +127,7 @@ export async function extractAndStoreDeclarations(inspectionId: string, user: { 
       detectionMethod: d.detectionMethod,
       bbox: d.bbox,
       ocrRegionIds: d.ocrRegionIds,
+      conflicts: d.conflicts as never,
       imageId: d.imageId,
     })),
     note: "Field detection is an AI observation with evidence — it is NOT a legal compliance determination.",
@@ -166,6 +167,7 @@ export async function listDeclarations(inspectionId: string, user: { sub: string
       detectionMethod: d.detectionMethod,
       bbox: d.bbox,
       ocrRegionIds: d.ocrRegionIds,
+      conflicts: d.conflicts as never,
       imageId: d.imageId,
       image: d.image,
     })),
@@ -181,7 +183,23 @@ export async function updateDeclaration(
   const inspection = await prisma.inspection.findUnique({ where: { id: inspectionId } });
   if (!inspection) throw ApiError.notFound("Inspection not found");
   const access = canAccessInspection(user, inspection);
-  if (!access.canEdit) throw ApiError.forbidden("Only the owning inspector or an admin can correct declarations");
+  if (!access.canView) throw ApiError.notFound("Inspection not found");
+
+  const canEditDeclaration =
+    user.role === "ADMIN" ||
+    user.role === "REVIEWER" ||
+    (user.role === "INSPECTOR" && inspection.inspectorId === user.sub);
+
+  if (!canEditDeclaration) {
+    if (user.role === "VIEWER") {
+      throw ApiError.forbidden("VIEWER role cannot modify declarations");
+    }
+    if (user.role === "INSPECTOR") {
+      throw ApiError.forbidden("Inspectors can only correct declarations on their own inspections");
+    }
+    throw ApiError.forbidden("Not authorized to modify declarations");
+  }
+
 
   const existing = await prisma.declaration.findFirst({ where: { id: declarationId, inspectionId } });
   if (!existing) throw ApiError.notFound("Declaration not found");
@@ -217,6 +235,7 @@ export async function updateDeclaration(
     detectionMethod: updated.detectionMethod,
     bbox: updated.bbox,
     ocrRegionIds: updated.ocrRegionIds,
+    conflicts: updated.conflicts as never,
     imageId: updated.imageId,
   };
 }

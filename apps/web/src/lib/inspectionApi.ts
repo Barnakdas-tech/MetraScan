@@ -177,3 +177,47 @@ export async function listProducts(params: Record<string, string>): Promise<Prod
   const res = await api.get<Envelope<ProductsResponse>>("/products", { params });
   return res.data.data;
 }
+
+export interface ReviewQueueItem {
+  id: string;
+  inspectionNumber: string;
+  status: string;
+  overallResult: string | null;
+  packageType: string;
+  intendedConsumer: string;
+  location: string | null;
+  notes: string | null;
+  inspectionDate: string;
+  createdAt: string;
+  product?: {
+    id: string;
+    name: string;
+    brand: string | null;
+    category: string | null;
+  } | null;
+  inspector?: {
+    id: string;
+    name: string;
+    email: string;
+  } | null;
+  pendingCount: number;
+  pendingRules: string[];
+  reasons: string[];
+  hasConflicts: boolean;
+  lastReviewAction?: {
+    decision: string;
+    notes: string | null;
+    createdAt: string;
+  } | null;
+}
+
+export async function submitForReview(inspectionId: string, comment?: string): Promise<Inspection> {
+  const res = await api.post<Envelope<Inspection>>(`/inspections/${inspectionId}/submit-for-review`, { comment });
+  return res.data.data;
+}
+
+export async function getReviewQueue(): Promise<ReviewQueueItem[]> {
+  const res = await api.get<Envelope<ReviewQueueItem[]>>("/reviews/queue");
+  return res.data.data;
+}
+

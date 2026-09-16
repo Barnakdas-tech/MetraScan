@@ -193,7 +193,7 @@ function buildPdf(data: ReportData): Promise<Buffer> {
       ["Package Type", data.packageType],
       ["Product", data.product ? data.product.name + (data.product.brand ? " (" + data.product.brand + ")" : "") : "Not specified"],
       ["Product Category", data.product?.category ?? "Unknown"],
-      ["Origin", data.packageType === "IMPORTED" ? "Imported" : "Domestic"],
+      ["Origin", data.declarations.find(d => d.field === "countryOfOrigin")?.correctedValue ?? data.declarations.find(d => d.field === "countryOfOrigin")?.normalizedValue ?? (data.packageType === "IMPORTED" ? "Imported" : "Not specified")],
     ];
     table(doc, summaryRows, contentW);
     gap(doc, 10);

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { sendSuccess } from "../utils/http.js";
 import { ApiError } from "../utils/apiError.js";
-import { submitReview, getReviewHistory } from "../services/reviewService.js";
+import { submitReview, getReviewHistory, getReviewQueue } from "../services/reviewService.js";
 
 const reviewSchema = z.object({
   action: z.enum(["ACCEPT", "REJECT", "EDIT_DECLARATION", "CHANGE_RESULT", "COMMENT", "MARK_MANUAL"]),
@@ -23,3 +23,9 @@ export const submitReviewController = asyncHandler(async (req: Request, res: Res
 export const getReviewHistoryController = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, await getReviewHistory(req.params.id, req.user!));
 });
+
+export const getReviewQueueController = asyncHandler(async (req: Request, res: Response) => {
+  const queue = await getReviewQueue(req.user!);
+  sendSuccess(res, queue);
+});
+

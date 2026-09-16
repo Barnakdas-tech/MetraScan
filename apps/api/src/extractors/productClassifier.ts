@@ -21,6 +21,7 @@ const CATEGORY_KEYWORDS: Record<Exclude<ProductCategory, "unknown" | "other">, s
     "jam", "honey", "sauce", "ketchup", "pickle", "spice", "masala", "salt",
     "sugar", "tea", "coffee", "milk powder", "milk", "curd", "paneer", "biscuits",
     "noodle", "pasta", "soup", "chocolate", "candy", "sweet", "weaning", "baby food",
+    "protein", "whey", "supplement", "isolate", "hydrolysate", "nutraceutical",
   ],
   beverage: [
     "juice", "drink", "beverage", "water", "soda", "cola", "lemonade",

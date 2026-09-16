@@ -244,7 +244,7 @@ export function validateDimensions(
     return {
       ruleId: "R14",
       status: "FAIL",
-      confidence: 0.8,
+      confidence: 0.95,
       reason: "Garment-type commodity (Rule 14 scope) with no dimensions declaration detected across analyzed images.",
       evidence: { imageId: null, bbox: null, text: null },
       inputs: { productCategory, imagesSearched: visual.imageCount },

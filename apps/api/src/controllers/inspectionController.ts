@@ -2,7 +2,7 @@ import type { Request, Response } from "express";
 import { ApiError } from "../utils/apiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { sendSuccess } from "../utils/http.js";
-import { createInspection, listInspections, getInspectionById } from "../services/inspectionService.js";
+import { createInspection, listInspections, getInspectionById, submitInspectionForReview } from "../services/inspectionService.js";
 import { listInspectionsPaged } from "../services/inspectionService.js";
 import { historyQuerySchema } from "../validators/historySchemas.js";
 
@@ -27,3 +27,9 @@ export const getInspectionController = asyncHandler(async (req: Request, res: Re
   const inspection = await getInspectionById(req.params.inspectionId, req.user!);
   sendSuccess(res, inspection);
 });
+
+export const submitForReviewController = asyncHandler(async (req: Request, res: Response) => {
+  const updated = await submitInspectionForReview(req.params.id, req.user!, req.body?.comment);
+  sendSuccess(res, updated);
+});
+

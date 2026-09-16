@@ -1,10 +1,26 @@
+export interface ConflictItem {
+  imageId: string;
+  text: string;
+  value?: string | null;
+  bbox?: number[] | null;
+}
+
 export interface StoredValidationResult {
   id: string;
   ruleId: string;
   status: "PASS" | "FAIL" | "REVIEW" | "NOT_APPLICABLE" | "MANUAL_REQUIRED";
   confidence: number;
   reason: string;
-  evidence: { imageId: string | null; bbox: number[] | null; text: string | null } | null;
+  evidence: {
+    imageId: string | null;
+    bbox: number[] | null;
+    text: string | null;
+    conflict?: {
+      field: string;
+      primary: ConflictItem;
+      conflicting: ConflictItem[];
+    } | null;
+  } | null;
   validatorVersion: string | null;
   inputs: unknown;
   source: string | null;

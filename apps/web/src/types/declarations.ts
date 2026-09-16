@@ -1,3 +1,16 @@
+export interface DeclarationConflictCandidate {
+  imageId: string;
+  field: string;
+  rawText: string;
+  normalizedValue: string | null;
+  unit?: string | null;
+  currency?: string | null;
+  confidence: number;
+  ocrConfidence?: number | null;
+  bbox: number[] | null;
+  ocrRegionIds?: string[] | null;
+}
+
 export interface Declaration {
   id: string;
   field: string;
@@ -12,6 +25,7 @@ export interface Declaration {
   detectionMethod: string | null;
   bbox: number[] | null;
   ocrRegionIds: string[] | null;
+  conflicts?: DeclarationConflictCandidate[] | null;
   imageId: string | null;
   image?: { id: string; originalFilename: string; sequence: number } | null;
 }

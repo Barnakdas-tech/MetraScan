@@ -11,6 +11,8 @@ import dashboardRoutes from "./routes/dashboardRoutes.js";
 import productRoutes from "./routes/productRoutes.js";
 import ruleRoutes from "./routes/ruleRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
+import reviewRoutes from "./routes/reviewRoutes.js";
+import auditRoutes from "./routes/auditRoutes.js";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
 import { apiLimiter } from "./middleware/rateLimit.js";
 
@@ -38,8 +40,11 @@ export function createApp() {
   app.use("/api/v1/products", productRoutes);
   app.use("/api/v1/rules", ruleRoutes);
   app.use("/api/v1/users", userRoutes);
+  app.use("/api/v1/reviews", reviewRoutes);
+  app.use("/api/v1/audit", auditRoutes);
 
   app.use(notFoundHandler);
+
   app.use(errorHandler);
 
   return app;
